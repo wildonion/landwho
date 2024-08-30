@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import { connectWallet } from '../utils/chain';
 import axios from 'axios';
+import { connectWallet } from '../utils/chain';
 import * as turf from '@turf/turf'; // Import Turf.js
 
 const MyMap = dynamic(() => import('./components/MyMap'), { ssr: false });
@@ -12,13 +12,15 @@ const MyMap = dynamic(() => import('./components/MyMap'), { ssr: false });
 export default function Home() {
   const [wallet, setWallet] = useState(null);
   const [lands, setLands] = useState([]);
-  const [mapRef, setMapRef] = useState(null); // Reference to the map
-  const [showPopup, setShowPopup] = useState(null); // To trigger showing the popup
-  const [gridLayers, setGridLayers] = useState([]); // State to hold grid layers
-  const [selectedPolygon, setSelectedPolygon] = useState(null); // Store the selected polygon for reference
-  const [selectedLandId, setSelectedLandId] = useState(null); // Store the selected land ID
-  const [showSelectButton, setShowSelectButton] = useState(false); // State to show/hide the button
-  const [isButtonDisabled, setIsButtonDisabled] = useState(false); // State to manage button disabled state
+  const [mapRef, setMapRef] = useState(null);
+  const [showPopup, setShowPopup] = useState(null);
+  const [gridLayers, setGridLayers] = useState([]);
+  const [selectedPolygon, setSelectedPolygon] = useState(null);
+  const [showSelectButton, setShowSelectButton] = useState(false);
+  const [isButtonDisabled, setIsButtonDisabled] = useState(false);
+  const [showModal, setShowModal] = useState(false); // State to control modal visibility
+  const [landName, setLandName] = useState(''); // State to store the land name input
+  const [searchQuery, setSearchQuery] = useState(''); // State for the search box
 
   useEffect(() => {
     if (wallet) {
@@ -37,18 +39,24 @@ export default function Home() {
   };
 
   const registerLand = async (polygonInfo) => {
-    const name = prompt("Please enter a name for your land:"); // Prompt to get the land name
-    if (!name) {
-      alert("Land name is required.");
-      return;
-    }
+    setShowModal(true);
+    setSelectedPolygon(polygonInfo);
+  };
+
+  const handleSaveLand = async () => {
+    if (!landName || !selectedPolygon) return;
 
     try {
-      await axios.post('http://localhost:3001/registerLand', { wallet, polygonInfo, name });
-      fetchLands(wallet); // Refresh lands after saving
+      await axios.post('http://localhost:3001/registerLand', {
+        wallet,
+        polygonInfo: selectedPolygon,
+        name: landName,
+      });
+      fetchLands(wallet);
+      setShowModal(false);
+      setLandName(''); // Reset the land name input after saving
     } catch (err) {
       console.error('Error registering land:', err);
-      alert('Failed to save land. Please try again.');
     }
   };
 
@@ -67,12 +75,7 @@ export default function Home() {
     }
   };
 
-  const formatDate = (dateString) => {
-    const options = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' };
-    return new Date(dateString).toLocaleString(undefined, options);
-  };
-
-  // Helper function to close a polygon by ensuring the first and last points are the same
+  // Helper function to close a polygon
   const closePolygon = (coordinates) => {
     const firstPoint = coordinates[0];
     const lastPoint = coordinates[coordinates.length - 1];
@@ -82,73 +85,54 @@ export default function Home() {
     return coordinates;
   };
 
-  // Draw and select grids that are fully or partially inside the polygon
+  // Draw and select grids inside the polygon
   const drawGrid = (polygon) => {
     if (!mapRef) {
       console.error("Map reference is not set");
       return;
     }
 
-    setSelectedPolygon(polygon); // Save the selected polygon
-
+    setSelectedPolygon(polygon);
     const closedPolygon = closePolygon([...polygon]);
-
     const polygonGeoJson = turf.polygon([closedPolygon.map(coord => [coord[1], coord[0]])]);
 
-    // Get the bounding box of the polygon
     let bbox = turf.bbox(polygonGeoJson);
-
-    // Expand the bounding box slightly to ensure the grid covers the entire polygon
-    const expandBy = 0.01; // Adjust this value as needed
+    const expandBy = 0.01;
     bbox = [
-      bbox[0] - expandBy, // Min Longitude - expand to the left
-      bbox[1] - expandBy, // Min Latitude - expand downwards
-      bbox[2] + expandBy, // Max Longitude - expand to the right
-      bbox[3] + expandBy  // Max Latitude - expand upwards
+      bbox[0] - expandBy,
+      bbox[1] - expandBy,
+      bbox[2] + expandBy,
+      bbox[3] + expandBy
     ];
 
-    const cellSide = 100; // Adjust grid size (in meters)
+    const cellSide = 100;
     const grid = turf.squareGrid(bbox, cellSide, { units: 'meters' });
 
     const newGridLayers = grid.features.map((cell) => {
       const cellLayer = L.polygon(cell.geometry.coordinates[0].map(coord => [coord[1], coord[0]]), {
-        color: 'red',       // Default grid color
-        weight: 1,          // Line thickness
-        fillOpacity: 0.2,   // Transparency
-        fillColor: 'red'    // Default fill color
+        color: 'red',
+        weight: 1,
+        fillOpacity: 0.2,
+        fillColor: 'red'
       }).addTo(mapRef);
 
-      // Attach a click event listener to each grid cell for manual selection
       cellLayer.on('click', () => {
-        // Convert Leaflet polygon coordinates to GeoJSON polygon
         let turf_polygon_cell = turf.polygon([closePolygon(cell.geometry.coordinates[0])]);
-  
-        // Check if the grid cell intersects with the polygon
         const intersects = turf.booleanIntersects(turf_polygon_cell, polygonGeoJson);
 
         if (intersects) {
-          console.log("inside DrawGrid function, Cell intersects with the polygon.");
-  
-          // Get the intersection of the cell with the polygon
           const intersection = turf.intersect(turf.featureCollection([turf_polygon_cell, polygonGeoJson]));
-  
-          // Ensure the intersection is valid and has at least 4 positions
           if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
             const intersectionCoords = intersection.geometry.coordinates[0];
             if (intersectionCoords.length >= 4) {
-
-              // Clear the original cell
               mapRef.removeLayer(cellLayer);
-  
-              // Add the intersection as a new layer
               const intersectionLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
                 color: 'yellow',
                 weight: 1,
                 fillOpacity: 0.5,
                 fillColor: 'yellow'
               }).addTo(mapRef);
-  
-              // Remove the original cell from gridLayers and add the new intersection layer
+
               setGridLayers((prevLayers) => prevLayers.filter(layer => layer !== cellLayer).concat(intersectionLayer));
             } else {
               console.error("Invalid intersection polygon: less than 4 positions.");
@@ -164,91 +148,67 @@ export default function Home() {
       return cellLayer;
     });
 
-    console.log("Grid cells generated:", newGridLayers.length);
-    setGridLayers(newGridLayers); // Save grid layers to state to show on map
+    setGridLayers(newGridLayers);
   };
 
   const selectAllGridCells = () => {
     if (!gridLayers || gridLayers.length === 0 || !selectedPolygon) return;
-  
-    // Ensure the selected polygon is closed
+
     const closedPolygon = [...selectedPolygon];
-    if (
-      closedPolygon[0][0] !== closedPolygon[closedPolygon.length - 1][0] ||
-      closedPolygon[0][1] !== closedPolygon[closedPolygon.length - 1][1]
-    ) {
-      closedPolygon.push(closedPolygon[0]); // Close the polygon
+    if (closedPolygon[0][0] !== closedPolygon[closedPolygon.length - 1][0] ||
+        closedPolygon[0][1] !== closedPolygon[closedPolygon.length - 1][1]) {
+      closedPolygon.push(closedPolygon[0]);
     }
-  
+
     const polygonGeoJson = turf.polygon([closedPolygon.map(coord => [coord[1], coord[0]])]);
-  
+
     gridLayers.forEach(layer => {
       const coordinates = layer.getLatLngs()[0].map(coord => [coord.lng, coord.lat]);
-  
-      // Ensure the grid cell polygon is closed
+
       if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
           coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-        coordinates.push(coordinates[0]); // Close the polygon
+        coordinates.push(coordinates[0]);
       }
-  
+
       const layerGeoJson = turf.polygon([coordinates]);
-  
-      // Check if the grid cell intersects with the polygon
       const intersects = turf.booleanIntersects(layerGeoJson, polygonGeoJson);
-  
+
       if (intersects) {
-        console.log("Cell intersects with the polygon.");
-  
-        // Get the intersection of the cell with the polygon
         const intersection = turf.intersect(turf.featureCollection([layerGeoJson, polygonGeoJson]));
-  
-        // Ensure the intersection is valid and has at least 4 positions
         if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
           const intersectionCoords = intersection.geometry.coordinates[0];
           if (intersectionCoords.length >= 4) {
-  
-            // Clear the original cell
             mapRef.removeLayer(layer);
-  
-            // Add the intersection as a new layer
             const intersectionLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
               color: 'yellow',
               weight: 1,
               fillOpacity: 0.5,
               fillColor: 'yellow'
             }).addTo(mapRef);
-  
-            // Remove the original cell from gridLayers and add the new intersection layer
+
             setGridLayers((prevLayers) => prevLayers.filter(existingLayer => existingLayer !== layer).concat(intersectionLayer));
-          } else {
-            console.error("Invalid intersection polygon: less than 4 positions.");
           }
-        } else {
-          console.error("Intersection could not be calculated.");
         }
       }
     });
 
-    // Disable the button, change its text and color
     setIsButtonDisabled(true);
   };
 
   const resetMap = () => {
     if (selectedPolygon) {
-      loadLandOnMap(selectedPolygon, selectedLandId); // Use selectedLandId to ensure the button stays highlighted
-      setIsButtonDisabled(false); // Re-enable the button
+      loadLandOnMap(selectedPolygon);
+      setIsButtonDisabled(false);
     }
   };
-  
-  const loadLandOnMap = (polygonInfo, landId) => {
+
+  const loadLandOnMap = (polygonInfo) => {
     if (mapRef) {
       const L = require('leaflet');
 
-      // Clear any existing grid layers
       gridLayers.forEach(layer => mapRef.removeLayer(layer));
       setGridLayers([]);
 
-      // Ensure the polygon is cleared before adding a new one
       mapRef.eachLayer((layer) => {
         if (layer instanceof L.Polygon || layer instanceof L.Popup) {
           mapRef.removeLayer(layer);
@@ -256,31 +216,24 @@ export default function Home() {
       });
 
       const polygon = L.polygon(polygonInfo, { color: 'blue' }).addTo(mapRef);
-
       const bounds = polygon.getBounds();
       mapRef.fitBounds(bounds);
-
-      // Center the map on the polygon's center point
       mapRef.setView(bounds.getCenter(), 13);
 
-      // Set the popup content and position
       setShowPopup({
         polygon: polygonInfo,
         center: bounds.getCenter()
       });
 
-      // Draw the grid for the selected polygon
       drawGrid(polygonInfo);
-
-      // Show the "Select Grid Cells" button
       setShowSelectButton(true);
-
-      // Set the selected land ID
-      setSelectedLandId(landId);
-    } else {
-      console.error('Map reference is not set');
     }
   };
+
+  const filteredLands = lands.filter(land => 
+    land.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    land.id.toString().includes(searchQuery)
+  );
 
   return (
     <div className="container">
@@ -294,19 +247,13 @@ export default function Home() {
         {!wallet ? (
           <button 
             className="connect-button" 
-            onClick={handleConnectWallet}
+            onClick={handleConnectWallet} 
             style={{
               position: 'absolute',
               top: '10px',
-              right: '10px',
-              zIndex: 1000,
-              backgroundColor: '#007bff',
-              color: 'white',
+              right: '10px', // Positioned in the top-right corner
               padding: '5px 10px',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              fontSize: '12px'
+              fontSize: '14px'
             }}
           >
             Connect Wallet
@@ -316,9 +263,9 @@ export default function Home() {
             <div className="map-container">
               <MyMap
                 onPolygonCreated={registerLand}
-                setMapRef={setMapRef} // Ensure setMapRef is passed here
+                setMapRef={setMapRef}
                 initialPolygons={lands.map((land) => land.polygon_info)}
-                showPopup={showPopup} // Pass the showPopup state to MyMap
+                showPopup={showPopup}
               />
               {showSelectButton && (
                 <>
@@ -327,10 +274,10 @@ export default function Home() {
                     disabled={isButtonDisabled}
                     style={{
                       position: 'absolute',
-                      top: '60px',  // Adjusted position to be below the "Save Polygon" button
+                      top: '60px',
                       left: '10px',
                       zIndex: 1000,
-                      backgroundColor: isButtonDisabled ? 'gray' : '#28a745',  // Gray when disabled, green otherwise
+                      backgroundColor: isButtonDisabled ? 'gray' : '#28a745',
                       color: 'white',
                       padding: '5px 10px',
                       border: 'none',
@@ -339,16 +286,16 @@ export default function Home() {
                       fontSize: '12px'
                     }}
                   >
-                    {isButtonDisabled ? "Select All Grid Cells: Off" : "Select All Grid Cells"}
+                    {isButtonDisabled ? "Select Grid Manually" : "Select All Grid Cells"}
                   </button>
                   <button 
                     onClick={resetMap} 
                     style={{
                       position: 'absolute',
-                      top: '100px',  // Positioned below the "Select All Grid Cells" button
+                      top: '100px',
                       left: '10px',
                       zIndex: 1000,
-                      backgroundColor: '#17a2b8',  // Blue color for the reset button
+                      backgroundColor: '#17a2b8',
                       color: 'white',
                       padding: '5px 10px',
                       border: 'none',
@@ -364,25 +311,40 @@ export default function Home() {
             </div>
             <div className="land-list">
               <h2>Your Registered Lands:</h2>
-              {lands.length > 0 ? (
+              <input 
+                type="text" 
+                placeholder="Search lands..." 
+                value={searchQuery} 
+                onChange={(e) => setSearchQuery(e.target.value)} 
+                style={{ 
+                  marginBottom: '10px', 
+                  padding: '5px', 
+                  width: 'calc(100% - 20px)', 
+                  marginLeft: '10px',
+                  marginRight: '10px',
+                  boxSizing: 'border-box' 
+                }}
+              />
+              {filteredLands.length > 0 ? (
                 <ul>
-                  {lands.map((land) => (
+                  {filteredLands.map((land) => (
                     <li key={land.id}>
                       <button 
-                        onClick={() => loadLandOnMap(land.polygon_info, land.id)}
+                        onClick={() => loadLandOnMap(land.polygon_info)} 
                         style={{
-                          backgroundColor: land.id === selectedLandId ? '#28a745' : '',  // Green if selected
-                          color: land.id === selectedLandId ? 'white' : 'black',  // White text if selected
-                          padding: '5px 10px',
-                          border: '1px solid #ccc',
-                          borderRadius: '5px',
+                          backgroundColor: selectedPolygon === land.polygon_info ? '#28a745' : 'transparent',
+                          color: selectedPolygon === land.polygon_info ? 'white' : 'black',
+                          padding: '5px',
                           marginBottom: '5px',
+                          borderRadius: '3px',
+                          textAlign: 'left',
+                          width: 'calc(100% - 20px)',
+                          marginLeft: '10px',
+                          marginRight: '10px',
                           cursor: 'pointer'
                         }}
                       >
-                        {land.name}&#39;s Land with ID: {land.id} registered at:
-                        <br />
-                        <small>{formatDate(land.created_at)}</small>
+                        {land.name}'s land with ID {land.id} - {new Date(land.created_at).toLocaleString()}
                       </button>
                     </li>
                   ))}
@@ -394,6 +356,73 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {showModal && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 2000
+          }}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              padding: '20px',
+              borderRadius: '10px',
+              width: '300px',
+              textAlign: 'center'
+            }}
+          >
+            <h3>Enter Land Name</h3>
+            <input 
+              type="text" 
+              value={landName} 
+              onChange={(e) => setLandName(e.target.value)} 
+              style={{
+                width: '100%',
+                padding: '10px',
+                marginBottom: '10px',
+                boxSizing: 'border-box'
+              }}
+            />
+            <button 
+              onClick={handleSaveLand} 
+              style={{
+                backgroundColor: '#28a745',
+                color: 'white',
+                padding: '10px 15px',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                marginRight: '10px'
+              }}
+            >
+              Save
+            </button>
+            <button 
+              onClick={() => setShowModal(false)} 
+              style={{
+                backgroundColor: '#dc3545',
+                color: 'white',
+                padding: '10px 15px',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
