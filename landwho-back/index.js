@@ -31,32 +31,33 @@ app.post('/registerOwner', async (req, res) => {
 
 // Register new land
 app.post('/registerLand', async (req, res) => {
-    const { wallet, polygonInfo } = req.body;
-  
-    if (!wallet || !polygonInfo) {
-      return res.status(400).json({ error: 'Wallet and polygon info are required' });
+  const { wallet, polygonInfo, name } = req.body;
+
+  if (!wallet || !polygonInfo || !name) {
+    return res.status(400).json({ error: 'Wallet, name, and polygon info are required' });
+  }
+
+  try {
+    // Find the owner by wallet address
+    const owner = await pool.query('SELECT id FROM landOwners WHERE wallet = $1', [wallet]);
+    if (owner.rows.length === 0) {
+      return res.status(404).json({ error: 'Owner not found' });
     }
-  
-    try {
-      // Find the owner by wallet address
-      const owner = await pool.query('SELECT id FROM landOwners WHERE wallet = $1', [wallet]);
-      if (owner.rows.length === 0) {
-        return res.status(404).json({ error: 'Owner not found' });
-      }
-      const ownerId = owner.rows[0].id;
-  
-      // Insert the polygon info into the database
-      const result = await pool.query(
-        'INSERT INTO landInfo (owner_id, polygon_info) VALUES ($1, $2) RETURNING id',
-        [ownerId, JSON.stringify(polygonInfo)]
-      );
-  
-      res.status(201).json(result.rows[0]); // Return the new land ID
-    } catch (err) {
-      console.error('Error registering land:', err.message);
-      res.status(500).json({ error: 'Internal Server Error' });
-    }
-  });
+    const ownerId = owner.rows[0].id;
+
+    // Insert the polygon info and name into the database
+    const result = await pool.query(
+      'INSERT INTO landInfo (owner_id, polygon_info, name) VALUES ($1, $2, $3) RETURNING id',
+      [ownerId, JSON.stringify(polygonInfo), name]
+    );
+
+    res.status(201).json(result.rows[0]); // Return the new land ID
+  } catch (err) {
+    console.error('Error registering land:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
   
 
 // Get lands by wallet address

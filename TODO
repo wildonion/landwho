@@ -14,9 +14,7 @@ https://github.com/MikeECunningham/rust-trader-public/tree/main
 - target bin
 - family tree on ton
 
-fix the connect wallet button 
-edit existing polygon 
-select all cells
-export the fullfilled polygon in an svg vector based component
-land name and redux and better ui for panel
+
+edit existing polygon
+redux and better ui for panel
 performence issue
