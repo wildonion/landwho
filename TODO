@@ -1,0 +1,22 @@
+
+
+
+https://www.youtube.com/watch?v=rht1vO2MBIg
+
+https://medium.com/@harshiljani2002/building-stock-market-engine-from-scratch-in-rust-ii-0c7b5d8a60b6
+
+https://medium.com/@harshiljani2002/building-stock-market-engine-from-scratch-in-rust-ii-0c7b5d8a60b6
+
+https://github.com/MikeECunningham/rust-trader-public/tree/main
+
+- onchain contracts (market, land and nft parcel)
+- p2p stock and market engine (orderbook, ...) with streamer brokers: use hoopoe
+- target bin
+- family tree on ton
+
+fix the connect wallet button 
+edit existing polygon 
+select all cells
+export the fullfilled polygon in an svg vector based component
+land name and redux and better ui for panel
+performence issue
