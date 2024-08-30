@@ -8,7 +8,7 @@ landwho bakcend, frontend and contracts
 
 ```bash
 cd landwho-front
-npm run dev
+npm install & npm run dev
 ```
 
 ## Backend Run:

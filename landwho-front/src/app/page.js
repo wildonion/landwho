@@ -21,6 +21,7 @@ export default function Home() {
   const [showModal, setShowModal] = useState(false); // State to control modal visibility
   const [landName, setLandName] = useState(''); // State to store the land name input
   const [searchQuery, setSearchQuery] = useState(''); // State for the search box
+  const [landGridSelected, setLandGridSelected] = useState({});
 
   useEffect(() => {
     if (wallet) {
@@ -152,47 +153,83 @@ export default function Home() {
   };
 
   const selectAllGridCells = () => {
-    if (!gridLayers || gridLayers.length === 0 || !selectedPolygon) return;
+  if (!gridLayers || gridLayers.length === 0 || !selectedPolygon) return;
 
-    const closedPolygon = [...selectedPolygon];
-    if (closedPolygon[0][0] !== closedPolygon[closedPolygon.length - 1][0] ||
-        closedPolygon[0][1] !== closedPolygon[closedPolygon.length - 1][1]) {
-      closedPolygon.push(closedPolygon[0]);
+  const landId = lands.find(land => land.polygon_info === selectedPolygon)?.id;
+  
+  const closedPolygon = [...selectedPolygon];
+  if (closedPolygon[0][0] !== closedPolygon[closedPolygon.length - 1][0] ||
+      closedPolygon[0][1] !== closedPolygon[closedPolygon.length - 1][1]) {
+    closedPolygon.push(closedPolygon[0]);
+  }
+
+  const polygonGeoJson = turf.polygon([closedPolygon.map(coord => [coord[1], coord[0]])]);
+
+  // Clear the map from existing selected grid layers before selecting new ones
+  gridLayers.forEach(layerGroup => {
+    if (layerGroup instanceof L.LayerGroup) {
+      layerGroup.eachLayer(layer => {
+        if (layer instanceof L.Polygon) {
+          mapRef.removeLayer(layer);
+        }
+      });
+    } else {
+      mapRef.removeLayer(layerGroup);
     }
+  });
 
-    const polygonGeoJson = turf.polygon([closedPolygon.map(coord => [coord[1], coord[0]])]);
+  gridLayers.forEach(layerGroup => {
+    // If the layer is a LayerGroup, iterate through its layers
+    if (layerGroup instanceof L.LayerGroup) {
+      layerGroup.eachLayer(layer => {
+        processLayer(layer, polygonGeoJson);
+      });
+    } else {
+      processLayer(layerGroup, polygonGeoJson);
+    }
+  });
 
-    gridLayers.forEach(layer => {
+  // Disable the button after selecting all cells
+  setIsButtonDisabled(true);
+
+  // Store the disabled state for the current land
+  if (landId) {
+    setLandGridSelected(prevState => ({
+      ...prevState,
+      [landId]: true
+    }));
+  }
+};
+  
+  const processLayer = (layer, polygonGeoJson) => {
+    if (layer instanceof L.Polygon) {
       const coordinates = layer.getLatLngs()[0].map(coord => [coord.lng, coord.lat]);
-
+  
       if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
           coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
         coordinates.push(coordinates[0]);
       }
-
+  
       const layerGeoJson = turf.polygon([coordinates]);
       const intersects = turf.booleanIntersects(layerGeoJson, polygonGeoJson);
-
+  
       if (intersects) {
         const intersection = turf.intersect(turf.featureCollection([layerGeoJson, polygonGeoJson]));
         if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
           const intersectionCoords = intersection.geometry.coordinates[0];
           if (intersectionCoords.length >= 4) {
-            mapRef.removeLayer(layer);
             const intersectionLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
               color: 'yellow',
               weight: 1,
               fillOpacity: 0.5,
               fillColor: 'yellow'
             }).addTo(mapRef);
-
-            setGridLayers((prevLayers) => prevLayers.filter(existingLayer => existingLayer !== layer).concat(intersectionLayer));
+  
+            setGridLayers((prevLayers) => prevLayers.concat(intersectionLayer));
           }
         }
       }
-    });
-
-    setIsButtonDisabled(true);
+    }
   };
 
   const resetMap = () => {
@@ -205,30 +242,41 @@ export default function Home() {
   const loadLandOnMap = (polygonInfo) => {
     if (mapRef) {
       const L = require('leaflet');
-
+  
+      // Clear the existing grid layers from the map
       gridLayers.forEach(layer => mapRef.removeLayer(layer));
       setGridLayers([]);
-
+  
+      // Clear any existing polygons and popups from the map
       mapRef.eachLayer((layer) => {
         if (layer instanceof L.Polygon || layer instanceof L.Popup) {
           mapRef.removeLayer(layer);
         }
       });
-
+  
+      // Add the new polygon to the map
       const polygon = L.polygon(polygonInfo, { color: 'blue' }).addTo(mapRef);
       const bounds = polygon.getBounds();
       mapRef.fitBounds(bounds);
       mapRef.setView(bounds.getCenter(), 13);
-
+  
+      // Show popup for the selected polygon
       setShowPopup({
         polygon: polygonInfo,
         center: bounds.getCenter()
       });
-
+  
+      // Draw the grid for the selected polygon
       drawGrid(polygonInfo);
+  
+      // Enable the "Select All Grid Cells" button whenever a new land is loaded
+      setIsButtonDisabled(false);
+  
+      // Show the select button
       setShowSelectButton(true);
     }
   };
+  
 
   const filteredLands = lands.filter(land => 
     land.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
