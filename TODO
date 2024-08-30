@@ -15,6 +15,8 @@ https://github.com/MikeECunningham/rust-trader-public/tree/main
 - family tree on ton
 
 
-edit existing polygon
-redux and better ui for panel
+delete and edit land info
+redux
+load the map based on gps
+search for land panel
 performence issue

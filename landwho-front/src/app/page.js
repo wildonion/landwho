@@ -37,11 +37,18 @@ export default function Home() {
   };
 
   const registerLand = async (polygonInfo) => {
+    const name = prompt("Please enter a name for your land:"); // Prompt to get the land name
+    if (!name) {
+      alert("Land name is required.");
+      return;
+    }
+
     try {
-      await axios.post('http://localhost:3001/registerLand', { wallet, polygonInfo });
-      fetchLands(wallet);
+      await axios.post('http://localhost:3001/registerLand', { wallet, polygonInfo, name });
+      fetchLands(wallet); // Refresh lands after saving
     } catch (err) {
       console.error('Error registering land:', err);
+      alert('Failed to save land. Please try again.');
     }
   };
 
@@ -58,6 +65,11 @@ export default function Home() {
     } else {
       console.error('Wallet connection failed');
     }
+  };
+
+  const formatDate = (dateString) => {
+    const options = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' };
+    return new Date(dateString).toLocaleString(undefined, options);
   };
 
   // Helper function to close a polygon by ensuring the first and last points are the same
@@ -327,7 +339,7 @@ export default function Home() {
                       fontSize: '12px'
                     }}
                   >
-                    {isButtonDisabled ? "Select Grid Manually" : "Select All Grid Cells"}
+                    {isButtonDisabled ? "Select All Grid Cells: Off" : "Select All Grid Cells"}
                   </button>
                   <button 
                     onClick={resetMap} 
@@ -368,7 +380,9 @@ export default function Home() {
                           cursor: 'pointer'
                         }}
                       >
-                        Land ID: {land.id}
+                        {land.name}&#39;s Land with ID: {land.id} registered at:
+                        <br />
+                        <small>{formatDate(land.created_at)}</small>
                       </button>
                     </li>
                   ))}

@@ -69,12 +69,16 @@ app.get('/lands/:wallet', async (req, res) => {
       return res.status(404).json({ error: 'Owner not found' });
     }
     const ownerId = owner.rows[0].id;
-    const lands = await pool.query('SELECT * FROM landInfo WHERE owner_id = $1', [ownerId]);
+    
+    // Fetch lands in descending order by `created_at`
+    const lands = await pool.query('SELECT * FROM landInfo WHERE owner_id = $1 ORDER BY created_at DESC', [ownerId]);
+    
     res.status(200).json(lands.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.listen(3001, () => {
   console.log('Server running on port 3001');
