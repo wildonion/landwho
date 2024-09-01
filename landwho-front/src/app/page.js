@@ -7,6 +7,8 @@ import axios from 'axios';
 import { connectWallet } from '../utils/chain';
 import * as turf from '@turf/turf';
 import { v4 as uuidv4 } from 'uuid';
+import L from 'leaflet';
+import 'leaflet-draw/dist/leaflet.draw.css'; // Import leaflet draw styles
 
 const MyMap = dynamic(() => import('./components/MyMap'), { ssr: false });
 
@@ -33,12 +35,24 @@ export default function Home() {
   const [parcelInfo, setParcelInfo] = useState({});
   const [selectedLand, setSelectedLand] = useState(null);  // Store the full land object
 
-
+  useEffect(() => {
+    // This code runs only on the client side
+    if (typeof window !== 'undefined') {
+      // Access window or document here
+    }
+  }, []);
+  
   useEffect(() => {
     if (wallet) {
       fetchLands(wallet);
     }
   }, [wallet]);
+
+  useEffect(() => {
+    if (lands.length > 0) {
+      loadLandOnMap(lands[0]);
+    }
+  }, [lands]);
 
   useEffect(() => {
     if (parcelInfo.parcel_uuid) {
@@ -113,7 +127,7 @@ export default function Home() {
     const polygonGeoJson = turf.polygon([closedPolygon.map(coord => [coord[1], coord[0]])]);
 
     let bbox = turf.bbox(polygonGeoJson);
-    const expandBy = 0.0005;
+    const expandBy = 0.00005;
     bbox = [
         bbox[0] - expandBy,
         bbox[1] - expandBy,
@@ -121,7 +135,7 @@ export default function Home() {
         bbox[3] + expandBy
     ];
 
-    const cellSide = 100; // 100 meters each parcel
+    const cellSide = 10; // 100 meters each parcel
     const grid = turf.squareGrid(bbox, cellSide, { units: 'meters' });
 
     const newGridLayers = grid.features.map((cell) => {
@@ -163,8 +177,7 @@ export default function Home() {
     });
 
     setGridLayers(newGridLayers);
-};
-
+  };
 
   const handleNftParcelClick = (coordinates) => {
     const newUUID = uuidv4();
@@ -204,114 +217,113 @@ export default function Home() {
     } else {
         console.log('Cell does not intersect with the polygon.');
     }
-};
+  };
 
-const selectAllGridCells = () => {
-  if (!gridLayers || gridLayers.length === 0 || !selectedPolygon) {
-      console.error('Missing grid layers or selected polygon coordinates');
-      return;
-  }
+  const selectAllGridCells = () => {
+    if (!gridLayers || gridLayers.length === 0 || !selectedPolygon) {
+        console.error('Missing grid layers or selected polygon coordinates');
+        return;
+    }
 
-  const landId = lands.find(land => land.polygon_info === selectedPolygon)?.id;
+    const landId = lands.find(land => land.polygon_info === selectedPolygon)?.id;
 
-  const closedPolygon = [...selectedPolygon];
-  if (closedPolygon[0][0] !== closedPolygon[closedPolygon.length - 1][0] ||
-      closedPolygon[0][1] !== closedPolygon[closedPolygon.length - 1][1]) {
-      closedPolygon.push(closedPolygon[0]);
-  }
+    const closedPolygon = [...selectedPolygon];
+    if (closedPolygon[0][0] !== closedPolygon[closedPolygon.length - 1][0] ||
+        closedPolygon[0][1] !== closedPolygon[closedPolygon.length - 1][1]) {
+        closedPolygon.push(closedPolygon[0]);
+    }
 
-  const polygonGeoJson = turf.polygon([closedPolygon.map(coord => [coord[1], coord[0]])]);
+    const polygonGeoJson = turf.polygon([closedPolygon.map(coord => [coord[1], coord[0]])]);
 
-  gridLayers.forEach(layerGroup => {
-      if (layerGroup instanceof L.LayerGroup) {
-          layerGroup.eachLayer(layer => {
-              if (layer instanceof L.Polygon) {
-                  mapRef.removeLayer(layer);
-              }
-          });
-      } else {
-          mapRef.removeLayer(layerGroup);
-      }
-  });
+    gridLayers.forEach(layerGroup => {
+        if (layerGroup instanceof L.LayerGroup) {
+            layerGroup.eachLayer(layer => {
+                if (layer instanceof L.Polygon) {
+                    mapRef.removeLayer(layer);
+                }
+            });
+        } else {
+            mapRef.removeLayer(layerGroup);
+        }
+    });
 
-  gridLayers.forEach(layerGroup => {
-      if (layerGroup instanceof L.LayerGroup) {
-          layerGroup.eachLayer(layer => {
-              processLayer(layer, polygonGeoJson);
-          });
-      } else {
-          processLayer(layerGroup, polygonGeoJson);
-      }
-  });
+    gridLayers.forEach(layerGroup => {
+        if (layerGroup instanceof L.LayerGroup) {
+            layerGroup.eachLayer(layer => {
+                processLayer(layer, polygonGeoJson);
+            });
+        } else {
+            processLayer(layerGroup, polygonGeoJson);
+        }
+    });
 
-  setIsButtonDisabled(true);
+    setIsButtonDisabled(true);
 
-  if (landId) {
-      setLandGridSelected(prevState => ({
-          ...prevState,
-          [landId]: true
-      }));
-  }
-};
+    if (landId) {
+        setLandGridSelected(prevState => ({
+            ...prevState,
+            [landId]: true
+        }));
+    }
+  };
 
-const processLayer = (layer, polygonGeoJson) => {
-  if (layer instanceof L.Polygon) {
-      const coordinates = layer.getLatLngs()[0].map(coord => [coord.lng, coord.lat]);
+  const processLayer = (layer, polygonGeoJson) => {
+    if (layer instanceof L.Polygon) {
+        const coordinates = layer.getLatLngs()[0].map(coord => [coord.lng, coord.lat]);
 
-      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-      }
+        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+            coordinates.push(coordinates[0]);
+        }
 
-      const layerGeoJson = turf.polygon([coordinates]);
-      const intersects = turf.booleanIntersects(layerGeoJson, polygonGeoJson);
+        const layerGeoJson = turf.polygon([coordinates]);
+        const intersects = turf.booleanIntersects(layerGeoJson, polygonGeoJson);
 
-      if (intersects) {
-          const intersection = turf.intersect(turf.featureCollection([layerGeoJson, polygonGeoJson]));
-          if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
-              const intersectionCoords = intersection.geometry.coordinates[0];
-              if (intersectionCoords.length >= 4) {
-                  const intersectionLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
-                      color: 'yellow',
-                      weight: 1,
-                      fillOpacity: 0.5,
-                      fillColor: 'yellow'
-                  }).addTo(mapRef);
+        if (intersects) {
+            const intersection = turf.intersect(turf.featureCollection([layerGeoJson, polygonGeoJson]));
+            if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
+                const intersectionCoords = intersection.geometry.coordinates[0];
+                if (intersectionCoords.length >= 4) {
+                    const intersectionLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
+                        color: 'yellow',
+                        weight: 1,
+                        fillOpacity: 0.5,
+                        fillColor: 'yellow'
+                    }).addTo(mapRef);
 
-                  const newUUID = uuidv4();
-                  setParcelUUID(newUUID);
-                  setParcelLatLngs(intersectionCoords);
+                    const newUUID = uuidv4();
+                    setParcelUUID(newUUID);
+                    setParcelLatLngs(intersectionCoords);
 
-                  setSelectedGrids((prev) => [...prev, { uuid: newUUID, latLngs: intersectionCoords }]);
+                    setSelectedGrids((prev) => [...prev, { uuid: newUUID, latLngs: intersectionCoords }]);
 
-                  setGridLayers((prevLayers) => prevLayers.concat(intersectionLayer));
+                    setGridLayers((prevLayers) => prevLayers.concat(intersectionLayer));
 
-                  // Attach the hover event to the yellow selected cells
-                  intersectionLayer.on('mouseover', (e) => {
-                      const popup = L.popup()
-                          .setLatLng(e.latlng)
-                          .setContent('<button id="nft-parcel-button" style="background-color: #ff7f00; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">NFT Parcel</button>')
-                          .openOn(mapRef);
+                    // Attach the hover event to the yellow selected cells
+                    intersectionLayer.on('mouseover', (e) => {
+                        const popup = L.popup()
+                            .setLatLng(e.latlng)
+                            .setContent('<button id="nft-parcel-button" style="background-color: #ff7f00; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">NFT Parcel</button>')
+                            .openOn(mapRef);
 
-                      popup.getElement().querySelector("#nft-parcel-button").addEventListener("click", () => {
-                          handleNftParcelClick(intersectionCoords);
-                          mapRef.closePopup();
-                      });
-                  });
-              }
-          }
-      }
-  }
-};
+                        popup.getElement().querySelector("#nft-parcel-button").addEventListener("click", () => {
+                            handleNftParcelClick(intersectionCoords);
+                            mapRef.closePopup();
+                        });
+                    });
+                }
+            }
+        }
+    }
+  };
 
-const resetMap = () => {
-  if (selectedLand) {  // Use the full land object
-      loadLandOnMap(selectedLand);
-      setIsButtonDisabled(false);
-      resetParcelState();
-  }
-};
-
+  const resetMap = () => {
+    if (selectedLand) {  // Use the full land object
+        loadLandOnMap(selectedLand);
+        setIsButtonDisabled(false);
+        resetParcelState();
+    }
+  };
 
   const loadLandOnMap = (land) => {
     if (mapRef) {
@@ -328,55 +340,42 @@ const resetMap = () => {
             }
         });
 
-        // Debugging: Log the structure of polygon_info
-        console.log("Selected land polygon_info:", land.polygon_info);
-
-        // Check if polygon_info is defined and has the correct structure
         if (land.polygon_info && Array.isArray(land.polygon_info) && land.polygon_info.length > 0) {
             const polygon = L.polygon(land.polygon_info, { color: 'blue' }).addTo(mapRef);
             const bounds = polygon.getBounds();
             mapRef.fitBounds(bounds);
             mapRef.setView(bounds.getCenter(), 13);
 
-            // Set landName, landId, and store the full land object
             setLandName(land.name);
             setLandId(land.id);
-            setSelectedLand(land);  // Store the full land object
+            setSelectedLand(land);
             setSelectedPolygon({ coordinates: land.polygon_info, landId: land.id });
 
-            // Show popup for the selected polygon
             setShowPopup({
                 polygon: land.polygon_info,
                 center: bounds.getCenter()
             });
 
-            // Draw the grid for the selected polygon
             drawGrid(land.polygon_info);
 
-            // Enable the "NFT Land" button whenever a new land is loaded
             setIsButtonDisabled(false);
-            resetParcelState(); // Reset parcel state when switching to another land
-
-            // Show the select button
+            resetParcelState();
             setShowSelectButton(true);
         } else {
             console.error("Invalid polygon information provided for the selected land:", land.polygon_info);
         }
     }
-};
-
-
-
-
+  };
 
   const resetParcelState = () => {
     setParcelPrice('');
+    setParcelRoyalty('');
     setParcelUUID('');
     setParcelLatLngs([]);
     setSelectedGrids([]);
     setShowParcelModal(false);
   };
-  
+
   const updateParcelInfo = () => {
     setParcelInfo({
       parcel_uuid: parcelUUID,
@@ -389,11 +388,57 @@ const resetMap = () => {
     });
   };
 
-  const handleSaveParcel = () => {
-    updateParcelInfo();
+  const handleSaveParcel = async () => {
+    // Create the new parcel info
+    const newParcelInfo = {
+      parcel_uuid: parcelUUID,
+      parcel_price: parcelPrice,
+      parcel_royalty: parcelRoyalty,
+      parcel_points: parcelLatLngs,
+      parcel_land_id: landId,
+      parcel_land_name: landName,
+      parcel_owner_wallet: wallet
+    };
+  
+    // Update the state with the new parcel info
+    setParcelInfo(newParcelInfo);
+  
+    // Now send the newParcelInfo to the backend
+    await sendParcelInfoToBackend(newParcelInfo);
+  
+    // Close the modal and reset the state only after the parcel info has been sent
     setShowParcelModal(false);
     resetParcelState();
   };
+  
+  const sendParcelInfoToBackend = async (parcelInfo) => {
+    try {
+      const response = await axios.post('http://localhost:3001/mintParcel', parcelInfo);
+      if (response.status === 200) {
+        alert('Parcel minted successfully!');
+      } else {
+        console.error('Failed to mint parcel.');
+      }
+    } catch (err) {
+      console.error('Error minting parcel:', err);
+    }
+  };
+  
+
+  // Handle Delete Land
+  const handleDeleteLand = async () => {
+    const confirmation = window.confirm("Are you sure you want to delete this land?");
+    if (confirmation) {
+      try {
+        await axios.delete(`http://localhost:3001/lands/${landId}`);
+        fetchLands(wallet);
+        resetMap();
+      } catch (err) {
+        console.error('Error deleting land:', err);
+      }
+    }
+  };
+  
 
   const filteredLands = lands.filter(land => 
     land.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -471,6 +516,24 @@ const resetMap = () => {
                   >
                     Reload Land
                   </button>
+                  <button 
+                    onClick={handleDeleteLand} 
+                    style={{
+                      position: 'absolute',
+                      top: '180px',
+                      left: '10px',
+                      zIndex: 1000,
+                      backgroundColor: '#dc3545',
+                      color: 'white',
+                      padding: '5px 10px',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    Delete Land
+                  </button>
                 </>
               )}
             </div>
@@ -494,25 +557,26 @@ const resetMap = () => {
                 <ul>
                   {filteredLands.map((land) => (
                     <li key={land.id}>
-                      <button 
-                          onClick={() => loadLandOnMap(land)}  // Pass the full land object here
-                          style={{
-                              backgroundColor: selectedPolygon?.landId === land.id ? '#28a745' : 'transparent',
-                              color: selectedPolygon?.landId === land.id ? 'white' : 'black',
-                              padding: '5px',
-                              marginBottom: '5px',
-                              borderRadius: '3px',
-                              textAlign: 'left',
-                              width: 'calc(100% - 20px)',
-                              marginLeft: '10px',
-                              marginRight: '10px',
-                              cursor: 'pointer'
-                          }}
-                      >
-                          {land.name}'s land with ID {land.id} - {new Date(land.created_at).toLocaleString()}
-                      </button>
-
-                    </li>
+                    <button 
+                      onClick={() => loadLandOnMap(land)}  // Pass the full land object here
+                      style={{
+                        backgroundColor: landId === land.id ? '#28a745' : 'transparent',  // Green background for selected land
+                        color: landId === land.id ? 'white' : 'black',  // White text for selected land
+                        padding: '5px',
+                        marginBottom: '5px',
+                        borderRadius: '3px',
+                        textAlign: 'left',
+                        width: 'calc(100% - 20px)',
+                        marginLeft: '10px',
+                        marginRight: '10px',
+                        cursor: 'pointer',
+                        border: '1px solid',  // Add a border to emphasize selection
+                        borderColor: landId === land.id ? '#28a745' : 'transparent'  // Match the border color with the background when selected
+                      }}
+                    >
+                      {land.name}'s land with ID {land.id} - {new Date(land.created_at).toLocaleString()}
+                    </button>
+                  </li>
                   ))}
                 </ul>
               ) : (
@@ -664,7 +728,7 @@ const resetMap = () => {
                 width: '45%',
               }}
             >
-              Purchase
+              Mint
             </button>
             <button 
               onClick={() => setShowParcelModal(false)} 

@@ -15,6 +15,26 @@ const pool = new Pool({
   port: 5432,
 });
 
+
+app.post('/mintParcel', async (req, res) => {
+  const { parcel_uuid, parcel_price, parcel_royalty, parcel_points, parcel_land_id, parcel_land_name, parcel_owner_wallet } = req.body;
+
+  // Log the received parcel information
+  console.log('Received Parcel Info:', {
+    parcel_uuid,
+    parcel_price,
+    parcel_royalty,
+    parcel_points,
+    parcel_land_id,
+    parcel_land_name,
+    parcel_owner_wallet,
+  });
+
+  // You can optionally store this information in the database or perform other actions
+
+  res.status(200).json({ message: 'Parcel info received successfully' });
+});
+
 // Register a new landowner
 app.post('/registerOwner', async (req, res) => {
   const { wallet } = req.body;
@@ -79,6 +99,51 @@ app.get('/lands/:wallet', async (req, res) => {
   }
 });
 
+
+// Update an existing land
+app.put('/land/:id', async (req, res) => {
+  const { id } = req.params;
+  const { polygonInfo, name } = req.body;
+
+  if (!polygonInfo || !name) {
+    return res.status(400).json({ error: 'Polygon info and name are required' });
+  }
+
+  try {
+    const result = await pool.query(
+      'UPDATE landInfo SET polygon_info = $1, name = $2 WHERE id = $3 RETURNING id',
+      [JSON.stringify(polygonInfo), name, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Land not found' });
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating land:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+
+// Delete an existing land
+app.delete('/lands/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM landInfo WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Land not found' });
+    }
+
+    res.status(200).json({ message: 'Land deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting land:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 app.listen(3001, () => {
   console.log('Server running on port 3001');

@@ -15,9 +15,9 @@ https://github.com/MikeECunningham/rust-trader-public/tree/main
 - family tree on ton
 
 
-
-- delete and edit land info
+- location search box 
 - load the map based on gps
-- nft land api
-- nft parcel api
-- store parcel or land info on ipfs 
+- nft land button in ui
+- parceling and landing apis
+- store parcel or land info on ipfs
+- a map between ipfs:minter
