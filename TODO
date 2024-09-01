@@ -13,7 +13,11 @@ https://github.com/MikeECunningham/rust-trader-public/tree/main
 - p2p stock and market engine (orderbook, ...) with streamer brokers: use hoopoe
 - target bin
 - family tree on ton
+
+
+
 - delete and edit land info
-- redux
 - load the map based on gps
-- log parcel infos
+- nft land api
+- nft parcel api
+- store parcel or land info on ipfs 

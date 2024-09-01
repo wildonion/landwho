@@ -111,7 +111,7 @@ const MyMap = ({ onPolygonCreated, setMapRef, initialPolygons = [], showPopup })
               cursor: 'pointer'
             }}
           >
-            Save Polygon
+            Register Land
           </button>
         </>
       )}
