@@ -121,7 +121,7 @@ export default function Home() {
         bbox[3] + expandBy
     ];
 
-    const cellSide = 10; // 10 meter each parcel
+    const cellSide = 100; // 100 meters each parcel
     const grid = turf.squareGrid(bbox, cellSide, { units: 'meters' });
 
     const newGridLayers = grid.features.map((cell) => {
