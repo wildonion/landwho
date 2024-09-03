@@ -34,6 +34,8 @@ export default function Home() {
   const [parcelLatLngs, setParcelLatLngs] = useState([]);
   const [parcelInfo, setParcelInfo] = useState({});
   const [selectedLand, setSelectedLand] = useState(null);  // Store the full land object
+  const [isLoading, setIsLoading] = useState(false);
+
 
   useEffect(() => {
     // This code runs only on the client side
@@ -116,7 +118,7 @@ export default function Home() {
     return coordinates;
   };
 
-  const drawGrid = (polygon) => {
+  const drawGrid = (polygon, mintedParcels = []) => {
     if (!mapRef) {
         console.error("Map reference is not set");
         return;
@@ -139,44 +141,87 @@ export default function Home() {
     const grid = turf.squareGrid(bbox, cellSide, { units: 'meters' });
 
     const newGridLayers = grid.features.map((cell) => {
-        const cellLayer = L.polygon(cell.geometry.coordinates[0].map(coord => [coord[1], coord[0]]), {
-            color: 'red',
-            weight: 1,
-            fillOpacity: 0.2,
-            fillColor: 'red'
-        }).addTo(mapRef);
-
-        const turfCell = turf.polygon([closePolygon(cell.geometry.coordinates[0])]);
+        const cellCoords = closePolygon(cell.geometry.coordinates[0]);
+        const turfCell = turf.polygon([cellCoords]);
         const intersects = turf.booleanIntersects(turfCell, polygonGeoJson);
 
-        if (intersects) {
-            const attachPopup = (layer, coords) => {
-                layer.on('mouseover', (e) => {
-                    const popupContent = '<button id="nft-parcel-button" style="background-color: #ff7f00; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">NFT Parcel</button>';
-                    const popup = L.popup()
-                        .setLatLng(e.latlng)
-                        .setContent(popupContent)
-                        .openOn(mapRef);
+        console.log("mintedParcels for this land", mintedParcels);
+        const isMinted = mintedParcels.some(parcel => {
+          console.log("parcel points", parcel.parcel_points);
+            const parcelTurf = turf.polygon([parcel.parcel_points]);
+            // Use a precise matching function here
+            console.log(JSON.stringify(parcel.parcel_points) === JSON.stringify(cellCoords));
+            return JSON.stringify(parcel.parcel_points) === JSON.stringify(cellCoords);
+        });
 
-                    // Attach the event listener directly to the popup's button
-                    popup.getElement().querySelector("#nft-parcel-button").addEventListener("click", () => {
-                        handleNftParcelClick(coords);
-                        mapRef.closePopup(); 
+        if (isMinted && intersects) {
+            const intersection = turf.intersect(turf.featureCollection([turfCell, polygonGeoJson]));
+            if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
+                const intersectionCoords = intersection.geometry.coordinates[0];
+                if (intersectionCoords.length >= 4) {
+                    return L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
+                        color: 'red',
+                        weight: 1,
+                        fillOpacity: 0.5,
+                        fillColor: 'red'
+                    }).addTo(mapRef);
+                }
+            }
+        } else if (intersects) {
+            const cellLayer = L.polygon(cellCoords.map(coord => [coord[1], coord[0]]), {
+                color: 'green',
+                weight: 1,
+                fillOpacity: 0.2,
+                fillColor: 'green'
+            }).addTo(mapRef);
+
+            const attachPopup = (layer, coords) => {
+                if (layer) {
+                    layer.on('mouseover', (e) => {
+                        const popupContent = '<button id="nft-parcel-button" style="background-color: #ff7f00; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">NFT Parcel</button>';
+                        const popup = L.popup()
+                            .setLatLng(e.latlng)
+                            .setContent(popupContent)
+                            .openOn(mapRef);
+
+                        // Attach the event listener directly to the popup's button
+                        popup.getElement().querySelector("#nft-parcel-button").addEventListener("click", () => {
+                            handleNftParcelClick(coords);
+                            mapRef.closePopup();
+                        });
                     });
-                });
+                }
             };
 
-            attachPopup(cellLayer, cell.geometry.coordinates[0]);
+            attachPopup(cellLayer, cellCoords);
 
             cellLayer.on('click', () => {
-                handleCellSelection(cellLayer, cell.geometry.coordinates[0], polygonGeoJson, attachPopup);
+                handleCellSelection(cellLayer, cellCoords, polygonGeoJson, attachPopup);
             });
+
+            return cellLayer;
         }
 
-        return cellLayer;
+        // Return null for cells that don't intersect or are already minted
+        return null;
     });
 
-    setGridLayers(newGridLayers);
+    // Filter out any null values before setting grid layers
+    setGridLayers(newGridLayers.filter(layer => layer !== null));
+};
+
+
+
+
+  const fetchMintedParcels = async (landId) => {
+    try {
+      const response = await axios.get(`http://localhost:3001/mintedParcels/${landId}`);
+      console.log(response.data)
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching minted parcels:', err);
+      return [];
+    }
   };
 
   const handleNftParcelClick = (coordinates) => {
@@ -190,34 +235,40 @@ export default function Home() {
   const handleCellSelection = (cellLayer, coordinates, polygonGeoJson, attachPopup) => {
     const turfCell = turf.polygon([closePolygon(coordinates)]);
     const intersects = turf.booleanIntersects(turfCell, polygonGeoJson);
-
+  
     if (intersects) {
-        const intersection = turf.intersect(turf.featureCollection([turfCell, polygonGeoJson]));
-        if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
-            const intersectionCoords = intersection.geometry.coordinates[0];
-            if (intersectionCoords.length >= 4) {
-                mapRef.removeLayer(cellLayer);
-                const intersectionLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
-                    color: 'yellow',
-                    weight: 1,
-                    fillOpacity: 0.5,
-                    fillColor: 'yellow'
-                }).addTo(mapRef);
-
-                setGridLayers((prevLayers) => prevLayers.filter(layer => layer !== cellLayer).concat(intersectionLayer));
-
-                // Attach the popup again to the selected yellow cell
-                attachPopup(intersectionLayer, intersectionCoords);
-            } else {
-                console.error("Invalid intersection polygon: less than 4 positions.");
-            }
+      const intersection = turf.intersect(turf.featureCollection([turfCell, polygonGeoJson]));
+      if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
+        const intersectionCoords = intersection.geometry.coordinates[0];
+        if (intersectionCoords.length >= 4) {
+          if (cellLayer) {
+            mapRef.removeLayer(cellLayer);
+          }
+          
+          const intersectionLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
+            color: 'yellow',
+            weight: 1,
+            fillOpacity: 0.5,
+            fillColor: 'yellow'
+          }).addTo(mapRef);
+  
+          setGridLayers((prevLayers) => prevLayers.filter(layer => layer !== cellLayer).concat(intersectionLayer));
+  
+          // Attach the popup again to the selected yellow cell
+          if (intersectionLayer) {
+            attachPopup(intersectionLayer, intersectionCoords);
+          }
         } else {
-            console.error("Intersection could not be calculated.");
+          console.error("Invalid intersection polygon: less than 4 positions.");
         }
+      } else {
+        console.error("Intersection could not be calculated.");
+      }
     } else {
-        console.log('Cell does not intersect with the polygon.');
+      console.log('Cell does not intersect with the polygon.');
     }
   };
+  
 
   const selectAllGridCells = () => {
     if (!gridLayers || gridLayers.length === 0 || !selectedPolygon) {
@@ -269,53 +320,56 @@ export default function Home() {
 
   const processLayer = (layer, polygonGeoJson) => {
     if (layer instanceof L.Polygon) {
-        const coordinates = layer.getLatLngs()[0].map(coord => [coord.lng, coord.lat]);
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-            coordinates.push(coordinates[0]);
-        }
-
-        const layerGeoJson = turf.polygon([coordinates]);
-        const intersects = turf.booleanIntersects(layerGeoJson, polygonGeoJson);
-
-        if (intersects) {
-            const intersection = turf.intersect(turf.featureCollection([layerGeoJson, polygonGeoJson]));
-            if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
-                const intersectionCoords = intersection.geometry.coordinates[0];
-                if (intersectionCoords.length >= 4) {
-                    const intersectionLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
-                        color: 'yellow',
-                        weight: 1,
-                        fillOpacity: 0.5,
-                        fillColor: 'yellow'
-                    }).addTo(mapRef);
-
-                    const newUUID = uuidv4();
-                    setParcelUUID(newUUID);
-                    setParcelLatLngs(intersectionCoords);
-
-                    setSelectedGrids((prev) => [...prev, { uuid: newUUID, latLngs: intersectionCoords }]);
-
-                    setGridLayers((prevLayers) => prevLayers.concat(intersectionLayer));
-
-                    // Attach the hover event to the yellow selected cells
-                    intersectionLayer.on('mouseover', (e) => {
-                        const popup = L.popup()
-                            .setLatLng(e.latlng)
-                            .setContent('<button id="nft-parcel-button" style="background-color: #ff7f00; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">NFT Parcel</button>')
-                            .openOn(mapRef);
-
-                        popup.getElement().querySelector("#nft-parcel-button").addEventListener("click", () => {
-                            handleNftParcelClick(intersectionCoords);
-                            mapRef.closePopup();
-                        });
-                    });
-                }
+      const coordinates = layer.getLatLngs()[0].map(coord => [coord.lng, coord.lat]);
+  
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+  
+      const layerGeoJson = turf.polygon([coordinates]);
+      const intersects = turf.booleanIntersects(layerGeoJson, polygonGeoJson);
+  
+      if (intersects) {
+        const intersection = turf.intersect(turf.featureCollection([layerGeoJson, polygonGeoJson]));
+        if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
+          const intersectionCoords = intersection.geometry.coordinates[0];
+          if (intersectionCoords.length >= 4) {
+            const intersectionLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
+              color: 'yellow',
+              weight: 1,
+              fillOpacity: 0.5,
+              fillColor: 'yellow'
+            }).addTo(mapRef);
+  
+            const newUUID = uuidv4();
+            setParcelUUID(newUUID);
+            setParcelLatLngs(intersectionCoords);
+  
+            setSelectedGrids((prev) => [...prev, { uuid: newUUID, latLngs: intersectionCoords }]);
+  
+            setGridLayers((prevLayers) => prevLayers.concat(intersectionLayer));
+  
+            // Attach the hover event to the yellow selected cells
+            if (intersectionLayer) {
+              intersectionLayer.on('mouseover', (e) => {
+                const popup = L.popup()
+                  .setLatLng(e.latlng)
+                  .setContent('<button id="nft-parcel-button" style="background-color: #ff7f00; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">NFT Parcel</button>')
+                  .openOn(mapRef);
+  
+                popup.getElement().querySelector("#nft-parcel-button").addEventListener("click", () => {
+                  handleNftParcelClick(intersectionCoords);
+                  mapRef.closePopup();
+                });
+              });
             }
+          }
         }
+      }
     }
   };
+  
 
   const resetMap = () => {
     if (selectedLand) {  // Use the full land object
@@ -325,47 +379,52 @@ export default function Home() {
     }
   };
 
-  const loadLandOnMap = (land) => {
+  const loadLandOnMap = async (land) => {
     if (mapRef) {
-        const L = require('leaflet');
-
-        // Clear the existing grid layers from the map
-        gridLayers.forEach(layer => mapRef.removeLayer(layer));
-        setGridLayers([]);
-
-        // Clear any existing polygons and popups from the map
-        mapRef.eachLayer((layer) => {
-            if (layer instanceof L.Polygon || layer instanceof L.Popup) {
-                mapRef.removeLayer(layer);
-            }
-        });
-
-        if (land.polygon_info && Array.isArray(land.polygon_info) && land.polygon_info.length > 0) {
-            const polygon = L.polygon(land.polygon_info, { color: 'blue' }).addTo(mapRef);
-            const bounds = polygon.getBounds();
-            mapRef.fitBounds(bounds);
-            mapRef.setView(bounds.getCenter(), 13);
-
-            setLandName(land.name);
-            setLandId(land.id);
-            setSelectedLand(land);
-            setSelectedPolygon({ coordinates: land.polygon_info, landId: land.id });
-
-            setShowPopup({
-                polygon: land.polygon_info,
-                center: bounds.getCenter()
-            });
-
-            drawGrid(land.polygon_info);
-
-            setIsButtonDisabled(false);
-            resetParcelState();
-            setShowSelectButton(true);
-        } else {
-            console.error("Invalid polygon information provided for the selected land:", land.polygon_info);
+      const L = require('leaflet');
+  
+      // Clear the existing grid layers from the map
+      gridLayers.forEach(layer => mapRef.removeLayer(layer));
+      setGridLayers([]);
+  
+      // Clear any existing polygons and popups from the map
+      mapRef.eachLayer((layer) => {
+        if (layer instanceof L.Polygon || layer instanceof L.Popup) {
+          mapRef.removeLayer(layer);
         }
+      });
+  
+      if (land.polygon_info && Array.isArray(land.polygon_info) && land.polygon_info.length > 0) {
+        const polygon = L.polygon(land.polygon_info, { color: 'blue' }).addTo(mapRef);
+        const bounds = polygon.getBounds();
+        mapRef.fitBounds(bounds);
+        mapRef.setView(bounds.getCenter(), 13);
+  
+        setLandName(land.name);
+        setLandId(land.id);
+        setSelectedLand(land);
+        setSelectedPolygon({ coordinates: land.polygon_info, landId: land.id });
+  
+        setShowPopup({
+          polygon: land.polygon_info,
+          center: bounds.getCenter()
+        });
+  
+        // Fetch minted parcels for the selected land
+        const mintedParcels = await fetchMintedParcels(land.id);
+  
+        // Draw the grid and highlight minted parcels
+        drawGrid(land.polygon_info, mintedParcels);
+  
+        setIsButtonDisabled(false);
+        resetParcelState();
+        setShowSelectButton(true);
+      } else {
+        console.error("Invalid polygon information provided for the selected land:", land.polygon_info);
+      }
     }
   };
+  
 
   const resetParcelState = () => {
     setParcelPrice('');
@@ -412,18 +471,22 @@ export default function Home() {
   };
   
   const sendParcelInfoToBackend = async (parcelInfo) => {
+    setIsLoading(true); // Start loading
     try {
       const response = await axios.post('http://localhost:3001/mintParcel', parcelInfo);
       if (response.status === 200) {
-        alert('Parcel minted successfully!');
+        console.log(response.data);
+        alert('Parcel was minted successfully!');
       } else {
         console.error('Failed to mint parcel.');
       }
     } catch (err) {
       console.error('Error minting parcel:', err);
+    } finally {
+      setIsLoading(false); // Stop loading
     }
   };
-  
+
 
   // Handle Delete Land
   const handleDeleteLand = async () => {

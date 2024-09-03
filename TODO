@@ -1,23 +1,14 @@
 
 
 
-https://www.youtube.com/watch?v=rht1vO2MBIg
-
-https://medium.com/@harshiljani2002/building-stock-market-engine-from-scratch-in-rust-ii-0c7b5d8a60b6
-
-https://medium.com/@harshiljani2002/building-stock-market-engine-from-scratch-in-rust-ii-0c7b5d8a60b6
-
-https://github.com/MikeECunningham/rust-trader-public/tree/main
-
-- onchain contracts (market, land and nft parcel)
-- p2p stock and market engine (orderbook, ...) with streamer brokers: use hoopoe
-- target bin
-- family tree on ton
 
 
+- reset land after minting
 - location search box 
 - load the map based on gps
-- nft land button in ui
-- parceling and landing apis
-- store parcel or land info on ipfs
-- a map between ipfs:minter
+- nft land logic
+- cover commission fee for minting
+- loading on minting
+- show owner on hover for green parcels 
+- show polygon scan address after minting
+- fill price and royalty then allow mint
