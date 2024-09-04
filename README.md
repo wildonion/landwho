@@ -1,7 +1,5 @@
 
 
-
-
 landwho bakcend, frontend and contracts
 
 ## Frontend Run:

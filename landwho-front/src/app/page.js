@@ -39,13 +39,6 @@ export default function Home() {
   const [mintedSuccessfully, setMintedSuccessfully] = useState(false);
   const [txHash, setTxHash] = useState(''); // Initialize txHash in state
 
-
-  useEffect(() => {
-    // This code runs only on the client side
-    if (typeof window !== 'undefined') {
-      // Access window or document here
-    }
-  }, []);
   
   useEffect(() => {
     if (wallet) {
@@ -172,8 +165,7 @@ export default function Home() {
                             <div style="text-align: left;">
                                 <strong>Parcel UUID:</strong> ${matchingMintedParcel.parcel_uuid}<br>
                                 <strong>Owner Wallet:</strong> ${matchingMintedParcel.parcel_owner_wallet}<br>
-                                <strong>Created At:</strong> ${new Date(matchingMintedParcel.created_at).toLocaleString()}<br>
-                                <strong>Price:</strong> ${matchingMintedParcel.parcel_price} MATIC<br>
+                                <strong>Minted At:</strong> ${new Date(matchingMintedParcel.created_at).toLocaleString()}<br>
                                 <strong>Royalty:</strong> ${matchingMintedParcel.parcel_royalty}%<br>
                                 <a href="https://amoy.polygonscan.com/tx/${matchingMintedParcel.tx_hash}" target="_blank" rel="noopener noreferrer">
                                     <button style="background-color: #800080; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
@@ -492,6 +484,8 @@ export default function Home() {
             console.error('Failed to mint parcel.');
         }
     } catch (err) {
+      let msg = err + ', maybe is already minted!';
+        alert(msg);
         console.error('Error minting parcel:', err);
     } finally {
         setIsLoading(false); // Stop loading
