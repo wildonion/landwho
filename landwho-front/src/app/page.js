@@ -38,6 +38,8 @@ export default function Home() {
   const [mintSuccessMessage, setMintSuccessMessage] = useState('');
   const [mintedSuccessfully, setMintedSuccessfully] = useState(false);
   const [txHash, setTxHash] = useState(''); // Initialize txHash in state
+  const [priceError, setPriceError] = useState('');
+  const [royaltyError, setRoyaltyError] = useState('');
 
 
   useEffect(() => {
@@ -196,7 +198,7 @@ export default function Home() {
                   <strong>Owner Wallet:</strong> ${matchingMintedParcel.parcel_owner_wallet}<br>
                   <strong>Minted At:</strong> ${new Date(matchingMintedParcel.created_at).toLocaleString()}<br>
                   <strong>Minted Price:</strong> ${matchingMintedParcel.parcel_price} MATIC<br>
-                  <strong>Royalty:</strong> ${matchingMintedParcel.parcel_royalty}%<br>
+                  <strong>Royalty:</strong> ${matchingMintedParcel.parcel_royalty / 100}%<br>
                   <a href="https://amoy.polygonscan.com/tx/${matchingMintedParcel.tx_hash}" target="_blank" rel="noopener noreferrer">
                     <button style="background-color: #800080; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
                       See Transaction
@@ -488,13 +490,43 @@ export default function Home() {
     setShowParcelModal(false);
   };
 
+  
+  const validateInputs = (price, royalty) => {
+    let isValid = true;
+
+    // Validate price
+    if (!price || isNaN(price) || Number(price) <= 0) {
+      setPriceError("Please enter a valid positive price.");
+      isValid = false;
+    } else {
+      setPriceError(''); // Clear error if valid
+    }
+
+    // Validate royalty
+    if (!royalty || isNaN(royalty) || Number(royalty) < 0 || Number(royalty) > 100) {
+      setRoyaltyError("Please enter a valid royalty percentage between 0 and 100.");
+      isValid = false;
+    } else {
+      setRoyaltyError(''); // Clear error if valid
+    }
+
+    return isValid;
+  };
 
   const handleSaveParcel = async () => {
+
+    const royaltyBasisPoints = Math.floor(parcelRoyalty * 100); 
+
+    // Validate price and royalty
+    if (!validateInputs(parcelPrice, parcelRoyalty)) {
+      return; // Stop the process if validation fails
+    }
+
     // Create the new parcel info
     const newParcelInfo = {
       parcel_uuid: parcelUUID,
       parcel_price: parcelPrice,
-      parcel_royalty: parcelRoyalty,
+      parcel_royalty: royaltyBasisPoints,
       parcel_points: parcelLatLngs,
       parcel_land_id: landId,
       parcel_land_name: landName,
@@ -645,7 +677,7 @@ export default function Home() {
               )}
             </div>
             <div className="land-list">
-              <h2>Your Registered Lands:</h2>
+              <h2>Registered Lands:</h2>
               <input 
                 type="text" 
                 placeholder="Search lands..." 
@@ -807,6 +839,7 @@ export default function Home() {
                 }}
                 disabled={mintedSuccessfully || isLoading}  // Disable input after minting or during loading
               />
+              {priceError && <p style={{ color: 'red' }}>{priceError}</p>}
               <input 
                 type="text" 
                 placeholder="Enter Parcel Royalty" 
@@ -820,6 +853,7 @@ export default function Home() {
                 }}
                 disabled={mintedSuccessfully || isLoading}  // Disable input after minting or during loading
               />
+              {royaltyError && <p style={{ color: 'red' }}>{royaltyError}</p>}
               
               {mintSuccessMessage && (
                 <p style={{ color: 'green', fontWeight: 'bold', marginTop: '10px' }}>

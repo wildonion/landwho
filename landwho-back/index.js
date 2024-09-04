@@ -22,7 +22,7 @@ const pool = new Pool({
 });
 
 const pinata = new PinataSDK('c47c85d0697e6b9c339a', '1d56c19710149e97c4d91d915410af1e12671f1ff79ef20a529e40a4b02df3e6');
-const contractAddress = '0x74dF8B923Ee327Dc1f89148B986c0e844ec13517';
+const contractAddress = '0x8F0Ead5431eCf6a21334aED05232C945DE3FcD35';
 
 // Load ABI from the compiled contract
 const abiPath = path.join(__dirname, 'LandRegistry.json');

@@ -32,7 +32,7 @@ contract LandRegistry is ERC721URIStorage, Ownable {
      * @param royalty The royalty percentage (e.g., 10 for 10%)
      */
     function mintLand(string memory ipfsHash, uint256 price, uint256 royalty) public {
-        require(royalty <= 100, "Royalty cannot exceed 100%");
+        require(royalty <= 10000, "Royalty cannot exceed 100%");
 
         uint256 tokenId = _tokenIdCounter.current();
         _tokenIdCounter.increment();
@@ -110,7 +110,7 @@ contract LandRegistry is ERC721URIStorage, Ownable {
      */
     function updateLandRoyalty(uint256 tokenId, uint256 newRoyalty) public {
         require(_isApprovedOrOwner(msg.sender, tokenId), "Caller is not owner nor approved");
-        require(newRoyalty <= 100, "Royalty cannot exceed 100%");
+        require(newRoyalty <= 10000, "Royalty cannot exceed 100%");
         lands[tokenId].royalty = newRoyalty;
     }
 }
