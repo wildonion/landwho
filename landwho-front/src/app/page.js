@@ -39,6 +39,26 @@ export default function Home() {
   const [mintedSuccessfully, setMintedSuccessfully] = useState(false);
   const [txHash, setTxHash] = useState(''); // Initialize txHash in state
 
+
+  useEffect(() => {
+    if (showPopup) {
+      const { totalParcels, mintedParcelsCount, remainingParcels, center } = showPopup;
+
+      // Create popup content with total, minted, and remaining parcels info
+      const popupContent = `
+        <div style="text-align: left;">
+          <strong>Total Parcels:</strong> ${totalParcels}<br>
+          <strong>Minted Parcels:</strong> ${mintedParcelsCount}<br>
+          <strong>Remaining Parcels:</strong> ${remainingParcels}<br>
+        </div>
+      `;
+
+      const popup = L.popup()
+        .setLatLng(center)
+        .setContent(popupContent)
+        .openOn(mapRef);
+    }
+  }, [showPopup]);  // Trigger this when `showPopup` is updated
   
   useEffect(() => {
     if (wallet) {
@@ -165,10 +185,17 @@ export default function Home() {
             // Attach the popup to the red minted parcel
             mintedLayer.on("click", () => {
               const popupContent = `
-                <div style="text-align: left;">
+                <div style="text-align: left; word-wrap: break-word;">
                   <strong>Parcel UUID:</strong> ${matchingMintedParcel.parcel_uuid}<br>
+                  <strong>Parcel Points:</strong><br>
+                  <div style="max-height: 100px; overflow-y: auto; padding-left: 10px;">
+                    ${matchingMintedParcel.parcel_points
+                      .map((point, index) => `(${point[0].toFixed(6)}, ${point[1].toFixed(6)})`)
+                      .join('<br>')}
+                  </div>
                   <strong>Owner Wallet:</strong> ${matchingMintedParcel.parcel_owner_wallet}<br>
                   <strong>Minted At:</strong> ${new Date(matchingMintedParcel.created_at).toLocaleString()}<br>
+                  <strong>Minted Price:</strong> ${matchingMintedParcel.parcel_price} MATIC<br>
                   <strong>Royalty:</strong> ${matchingMintedParcel.parcel_royalty}%<br>
                   <a href="https://amoy.polygonscan.com/tx/${matchingMintedParcel.tx_hash}" target="_blank" rel="noopener noreferrer">
                     <button style="background-color: #800080; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
@@ -397,10 +424,10 @@ export default function Home() {
 
   const loadLandOnMap = async (land) => {
     if (mapRef) {
-      const L = require('leaflet');
+      const L = require("leaflet");
   
       // Clear the existing grid layers from the map
-      gridLayers.forEach(layer => mapRef.removeLayer(layer));
+      gridLayers.forEach((layer) => mapRef.removeLayer(layer));
       setGridLayers([]);
   
       // Clear any existing polygons and popups from the map
@@ -411,7 +438,7 @@ export default function Home() {
       });
   
       if (land.polygon_info && Array.isArray(land.polygon_info) && land.polygon_info.length > 0) {
-        const polygon = L.polygon(land.polygon_info, { color: 'blue' }).addTo(mapRef);
+        const polygon = L.polygon(land.polygon_info, { color: "blue" }).addTo(mapRef);
         const bounds = polygon.getBounds();
         mapRef.fitBounds(bounds);
         mapRef.setView(bounds.getCenter(), 13);
@@ -421,16 +448,25 @@ export default function Home() {
         setSelectedLand(land);
         setSelectedPolygon({ coordinates: land.polygon_info, landId: land.id });
   
-        setShowPopup({
-          polygon: land.polygon_info,
-          center: bounds.getCenter()
-        });
-  
         // Fetch minted parcels for the selected land
         const mintedParcels = await fetchMintedParcels(land.id);
   
         // Draw the grid and highlight minted parcels
         drawGrid(land.polygon_info, mintedParcels);
+  
+        // Calculate total parcels, minted parcels, and remaining parcels
+        const totalParcels = gridLayers.length;
+        const mintedParcelsCount = mintedParcels.length;
+        const remainingParcels = totalParcels - mintedParcelsCount;
+  
+        // Show popup with the summary information
+        setShowPopup({
+          polygon: land.polygon_info,
+          center: bounds.getCenter(),
+          totalParcels,
+          mintedParcelsCount,
+          remainingParcels,
+        });
   
         setIsButtonDisabled(false);
         resetParcelState();
@@ -440,6 +476,7 @@ export default function Home() {
       }
     }
   };
+  
   
 
   const resetParcelState = () => {
