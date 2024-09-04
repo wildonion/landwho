@@ -139,7 +139,7 @@ export default function Home() {
         bbox[2] + expandBy,
         bbox[3] + expandBy
     ];
-    
+
     const cellSide = 10; // 100 meters each parcel
     const grid = turf.squareGrid(bbox, cellSide, { units: 'meters' });
 
@@ -148,26 +148,47 @@ export default function Home() {
         const turfCell = turf.polygon([cellCoords]);
         const intersects = turf.booleanIntersects(turfCell, polygonGeoJson);
 
-        console.log("mintedParcels for this land", mintedParcels);
-        const isMinted = mintedParcels.some(parcel => {
-          console.log("parcel points", parcel.parcel_points);
+        // Check if the parcel is minted
+        const matchingMintedParcel = mintedParcels.find(parcel => {
             const parcelTurf = turf.polygon([parcel.parcel_points]);
-            // Use a precise matching function here
-            console.log(JSON.stringify(parcel.parcel_points) === JSON.stringify(cellCoords));
-            return JSON.stringify(parcel.parcel_points) === JSON.stringify(cellCoords);
+            return turf.booleanEqual(turfCell, parcelTurf);
         });
 
-        if (isMinted && intersects) {
+        if (matchingMintedParcel && intersects) {
             const intersection = turf.intersect(turf.featureCollection([turfCell, polygonGeoJson]));
             if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
                 const intersectionCoords = intersection.geometry.coordinates[0];
                 if (intersectionCoords.length >= 4) {
-                    return L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
+                    const mintedLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
                         color: 'red',
                         weight: 1,
                         fillOpacity: 0.5,
                         fillColor: 'red'
                     }).addTo(mapRef);
+
+                    // Attach the popup to the red minted parcel
+                    mintedLayer.on('click', () => {
+                        const popupContent = `
+                            <div style="text-align: left;">
+                                <strong>Parcel UUID:</strong> ${matchingMintedParcel.parcel_uuid}<br>
+                                <strong>Owner Wallet:</strong> ${matchingMintedParcel.parcel_owner_wallet}<br>
+                                <strong>Created At:</strong> ${new Date(matchingMintedParcel.created_at).toLocaleString()}<br>
+                                <strong>Price:</strong> ${matchingMintedParcel.parcel_price} MATIC<br>
+                                <strong>Royalty:</strong> ${matchingMintedParcel.parcel_royalty}%<br>
+                                <a href="https://amoy.polygonscan.com/tx/${matchingMintedParcel.tx_hash}" target="_blank" rel="noopener noreferrer">
+                                    <button style="background-color: #800080; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
+                                        See Transaction
+                                    </button>
+                                </a>
+                            </div>
+                        `;
+                        const popup = L.popup()
+                            .setLatLng(mintedLayer.getBounds().getCenter())
+                            .setContent(popupContent)
+                            .openOn(mapRef);
+                    });
+
+                    return mintedLayer;
                 }
             }
         } else if (intersects) {
@@ -212,6 +233,7 @@ export default function Home() {
     // Filter out any null values before setting grid layers
     setGridLayers(newGridLayers.filter(layer => layer !== null));
 };
+
 
 
   const fetchMintedParcels = async (landId) => {

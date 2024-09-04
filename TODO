@@ -2,11 +2,9 @@
 
 
 
-show owner on hover for green parcels 
-issue with loading minted parcels on polygon
-
-
+- royalty and price validation
+- show minted parcel issue intersects with polygon
 - location search box 
 - load the map based on gps
 - nft land logic
-- cover commission fee for minting
+- cover commission fee for minting to charge server wallet
