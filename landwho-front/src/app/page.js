@@ -35,6 +35,9 @@ export default function Home() {
   const [parcelInfo, setParcelInfo] = useState({});
   const [selectedLand, setSelectedLand] = useState(null);  // Store the full land object
   const [isLoading, setIsLoading] = useState(false);
+  const [mintSuccessMessage, setMintSuccessMessage] = useState('');
+  const [mintedSuccessfully, setMintedSuccessfully] = useState(false);
+  const [txHash, setTxHash] = useState(''); // Initialize txHash in state
 
 
   useEffect(() => {
@@ -136,7 +139,7 @@ export default function Home() {
         bbox[2] + expandBy,
         bbox[3] + expandBy
     ];
-
+    
     const cellSide = 10; // 100 meters each parcel
     const grid = turf.squareGrid(bbox, cellSide, { units: 'meters' });
 
@@ -209,8 +212,6 @@ export default function Home() {
     // Filter out any null values before setting grid layers
     setGridLayers(newGridLayers.filter(layer => layer !== null));
 };
-
-
 
 
   const fetchMintedParcels = async (landId) => {
@@ -435,17 +436,6 @@ export default function Home() {
     setShowParcelModal(false);
   };
 
-  const updateParcelInfo = () => {
-    setParcelInfo({
-      parcel_uuid: parcelUUID,
-      parcel_price: parcelPrice,
-      parcel_royalty: parcelRoyalty,
-      parcel_points: parcelLatLngs,
-      parcel_land_id: landId,
-      parcel_land_name: landName,
-      parcel_owner_wallet: wallet
-    });
-  };
 
   const handleSaveParcel = async () => {
     // Create the new parcel info
@@ -456,7 +446,7 @@ export default function Home() {
       parcel_points: parcelLatLngs,
       parcel_land_id: landId,
       parcel_land_name: landName,
-      parcel_owner_wallet: wallet
+      parcel_owner_wallet: wallet,
     };
   
     // Update the state with the new parcel info
@@ -464,30 +454,30 @@ export default function Home() {
   
     // Now send the newParcelInfo to the backend
     await sendParcelInfoToBackend(newParcelInfo);
-  
-    // Close the modal and reset the state only after the parcel info has been sent
-    setShowParcelModal(false);
-    resetParcelState();
   };
   
   const sendParcelInfoToBackend = async (parcelInfo) => {
     setIsLoading(true); // Start loading
     try {
-      const response = await axios.post('http://localhost:3001/mintParcel', parcelInfo);
-      if (response.status === 200) {
-        console.log(response.data);
-        alert('Parcel was minted successfully!');
-      } else {
-        console.error('Failed to mint parcel.');
-      }
+        const response = await axios.post('http://localhost:3001/mintParcel', parcelInfo);
+        if (response.status === 200) {
+            const txHash = response.data.txHash;
+            console.log(response.data);
+            setMintSuccessMessage('Parcel was minted successfully!');
+            setTxHash(txHash); // Save txHash in state
+            setMintedSuccessfully(true); // Update state indicating mint was successful
+        } else {
+            console.error('Failed to mint parcel.');
+        }
     } catch (err) {
-      console.error('Error minting parcel:', err);
+        console.error('Error minting parcel:', err);
     } finally {
-      setIsLoading(false); // Stop loading
+        setIsLoading(false); // Stop loading
     }
-  };
+};
 
 
+  
   // Handle Delete Land
   const handleDeleteLand = async () => {
     const confirmation = window.confirm("Are you sure you want to delete this land?");
@@ -718,97 +708,160 @@ export default function Home() {
       )}
 
       {showParcelModal && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 2000,
-            padding: '10px'
-          }}
-        >
           <div 
             style={{
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '10px',
-              width: '90%',
-              maxWidth: '500px',
-              textAlign: 'center',
-              boxSizing: 'border-box',
-              '@media (maxWidth: 768px)': {
-                width: '100%',
-                padding: '15px',
-              }
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 2000,
+              padding: '10px'
             }}
           >
-            <h3>Parcel Information</h3>
-            <p>UUID: {parcelUUID}</p>
-            <p>Lat/Lng: {JSON.stringify(parcelLatLngs)}</p>
-            <p>Land ID: {landId}</p>
-            <p>Land Name: {landName}</p>
-            <p>Owner Wallet: {wallet}</p>
-            <input 
-              type="text" 
-              placeholder="Enter price" 
-              value={parcelPrice} 
-              onChange={(e) => setParcelPrice(e.target.value)} 
+            <div 
               style={{
-                width: '100%',
-                padding: '10px',
-                marginBottom: '10px',
-                boxSizing: 'border-box'
-              }}
-            />
-            <input 
-              type="text" 
-              placeholder="Enter Parcel Royalty" 
-              value={parcelRoyalty} 
-              onChange={(e) => setParcelRoyalty(e.target.value)} 
-              style={{
-                width: '100%',
-                padding: '10px',
-                marginBottom: '10px',
-                boxSizing: 'border-box'
-              }}
-            />
-            <button 
-              onClick={handleSaveParcel} 
-              style={{
-                backgroundColor: '#28a745',
-                color: 'white',
-                padding: '10px 15px',
-                border: 'none',
-                borderRadius: '5px',
-                cursor: 'pointer',
-                marginRight: '10px',
-                width: '45%',
+                backgroundColor: 'white',
+                padding: '20px',
+                borderRadius: '10px',
+                width: '90%',
+                maxWidth: '500px',
+                textAlign: 'center',
+                boxSizing: 'border-box',
               }}
             >
-              Mint
-            </button>
-            <button 
-              onClick={() => setShowParcelModal(false)} 
-              style={{
-                backgroundColor: '#dc3545',
-                color: 'white',
-                padding: '10px 15px',
-                border: 'none',
-                borderRadius: '5px',
-                cursor: 'pointer',
-                width: '45%',
-              }}
-            >
-              Cancel
-            </button>
+              <h3>Parcel Information</h3>
+              <p>UUID: {parcelUUID}</p>
+              <p>Lat/Lng: {JSON.stringify(parcelLatLngs)}</p>
+              <p>Land ID: {landId}</p>
+              <p>Land Name: {landName}</p>
+              <p>Owner Wallet: {wallet}</p>
+              <input 
+                type="text" 
+                placeholder="Enter price" 
+                value={parcelPrice} 
+                onChange={(e) => setParcelPrice(e.target.value)} 
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  marginBottom: '10px',
+                  boxSizing: 'border-box'
+                }}
+                disabled={mintedSuccessfully || isLoading}  // Disable input after minting or during loading
+              />
+              <input 
+                type="text" 
+                placeholder="Enter Parcel Royalty" 
+                value={parcelRoyalty} 
+                onChange={(e) => setParcelRoyalty(e.target.value)} 
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  marginBottom: '10px',
+                  boxSizing: 'border-box'
+                }}
+                disabled={mintedSuccessfully || isLoading}  // Disable input after minting or during loading
+              />
+              
+              {mintSuccessMessage && (
+                <p style={{ color: 'green', fontWeight: 'bold', marginTop: '10px' }}>
+                  {mintSuccessMessage}
+                </p>
+              )}
+
+              {/* Conditionally show transaction hash button */}
+              {mintedSuccessfully && txHash && (
+                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                  <a 
+                    href={`https://amoy.polygonscan.com/tx/${txHash}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <button 
+                      style={{
+                        backgroundColor: '#800080', // Purple color
+                        color: 'white',
+                        padding: '10px 15px',
+                        border: 'none',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      See Transaction
+                    </button>
+                  </a>
+
+                  <button 
+                    onClick={async () => {
+                      setShowParcelModal(false);
+                      setMintSuccessMessage('');  // Reset success message
+                      setMintedSuccessfully(false);  // Reset state
+                      // Reload the land on the map after closing the modal
+                      await loadLandOnMap(selectedLand); // This will reload the land state when the modal is closed
+                    }} 
+                    style={{
+                      backgroundColor: '#28a745',
+                      color: 'white',
+                      padding: '10px 15px',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+
+              {/* Conditionally render buttons */}
+              {!mintedSuccessfully ? (
+                <>
+                  <button 
+                    onClick={handleSaveParcel} 
+                    disabled={isLoading}  // Disable button during loading
+                    style={{
+                      backgroundColor: isLoading ? 'gray' : '#28a745',
+                      color: 'white',
+                      padding: '10px 15px',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: isLoading ? 'not-allowed' : 'pointer',
+                      marginRight: '10px',
+                      width: '45%',
+                    }}
+                  >
+                    {isLoading ? 'Minting...' : 'Mint'}
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (!isLoading) {
+                        setShowParcelModal(false);
+                        setMintSuccessMessage(''); // Reset success message
+                        setMintedSuccessfully(false);  // Reset state
+                      }
+                    }} 
+                    disabled={isLoading}  // Disable Cancel button during loading
+                    style={{
+                      backgroundColor: isLoading ? 'gray' : '#dc3545',
+                      color: 'white',
+                      padding: '10px 15px',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: isLoading ? 'not-allowed' : 'pointer',
+                      width: '45%',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
-        </div>
       )}
     </div>
   );

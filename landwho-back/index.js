@@ -44,21 +44,33 @@ app.post('/mintParcel', async (req, res) => {
     parcel_owner_wallet
   } = req.body;
 
-  let parcelInfo = `${parcel_uuid}-${parcel_land_name}-${parcel_land_id}`;
-  const options = {
-    pinataMetadata: {
-      name: parcelInfo,
-      keyvalues: {
-        parcelId: parcel_uuid,
-        ownerid: parcel_owner_wallet
-      }
-    },
-    pinataOptions: {
-      cidVersion: 0
-    }
-  };
-
   try {
+    // Check if the parcel has already been minted
+    const existingParcelQuery = await pool.query(
+      'SELECT * FROM minted_parcels WHERE parcel_points = $1 AND parcel_land_id = $2',
+      [JSON.stringify(parcel_points), parcel_land_id]
+    );
+
+    if (existingParcelQuery.rows.length > 0) {
+      // Parcel already minted
+      return res.status(400).json({ error: 'Parcel has already been minted.' });
+    }
+
+    // Proceed with pinning to IPFS and minting
+    let parcelInfo = `${parcel_uuid}-${parcel_land_name}-${parcel_land_id}`;
+    const options = {
+      pinataMetadata: {
+        name: parcelInfo,
+        keyvalues: {
+          parcelId: parcel_uuid,
+          ownerid: parcel_owner_wallet
+        }
+      },
+      pinataOptions: {
+        cidVersion: 0
+      }
+    };
+
     const result = await pinata.pinJSONToIPFS(req.body, options);
     console.log('Pinata Result:', result);
 
@@ -67,7 +79,7 @@ app.post('/mintParcel', async (req, res) => {
       const ipfsResponse = await axios.get(`https://turquoise-bizarre-reindeer-570.mypinata.cloud/ipfs/${ipfsHash}`);
       console.log('Data from IPFS:', ipfsResponse.data);
 
-      const tx = await contract.mintLand(   // Add owner wallet address here
+      const tx = await contract.mintLand(
         ipfsHash,
         ethers.parseEther(parcel_price),
         parcel_royalty
@@ -120,6 +132,7 @@ app.post('/mintParcel', async (req, res) => {
     res.status(500).json({ error: 'Failed to pin parcel info to IPFS' });
   }
 });
+
 
 // Get minted parcels by land ID
 app.get('/mintedParcels/:landId', async (req, res) => {

@@ -2,13 +2,11 @@
 
 
 
+show owner on hover for green parcels 
+issue with loading minted parcels on polygon
 
-- reset land after minting
+
 - location search box 
 - load the map based on gps
 - nft land logic
 - cover commission fee for minting
-- loading on minting
-- show owner on hover for green parcels 
-- show polygon scan address after minting
-- fill price and royalty then allow mint
