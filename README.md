@@ -15,3 +15,11 @@ npm install & npm run dev
 cd landwho-back
 node index.js
 ```
+
+## Deploy Contracts
+
+```bash
+cd landwho-contracts
+npx hardhat compile
+npx hardhat run scripts/deploy.js --network amoy
+```

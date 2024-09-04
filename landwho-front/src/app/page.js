@@ -116,117 +116,118 @@ export default function Home() {
 
   const drawGrid = (polygon, mintedParcels = []) => {
     if (!mapRef) {
-        console.error("Map reference is not set");
-        return;
+      console.error("Map reference is not set");
+      return;
     }
-
+  
     setSelectedPolygon(polygon);
     const closedPolygon = closePolygon([...polygon]);
     const polygonGeoJson = turf.polygon([closedPolygon.map(coord => [coord[1], coord[0]])]);
-
+  
     let bbox = turf.bbox(polygonGeoJson);
     const expandBy = 0.00005;
     bbox = [
-        bbox[0] - expandBy,
-        bbox[1] - expandBy,
-        bbox[2] + expandBy,
-        bbox[3] + expandBy
+      bbox[0] - expandBy,
+      bbox[1] - expandBy,
+      bbox[2] + expandBy,
+      bbox[3] + expandBy,
     ];
-
+  
     const cellSide = 10; // 100 meters each parcel
     const grid = turf.squareGrid(bbox, cellSide, { units: 'meters' });
-
+  
     const newGridLayers = grid.features.map((cell) => {
-        const cellCoords = closePolygon(cell.geometry.coordinates[0]);
-        const turfCell = turf.polygon([cellCoords]);
-        const intersects = turf.booleanIntersects(turfCell, polygonGeoJson);
-
-        // Check if the parcel is minted
-        const matchingMintedParcel = mintedParcels.find(parcel => {
-            const parcelTurf = turf.polygon([parcel.parcel_points]);
-            return turf.booleanEqual(turfCell, parcelTurf);
-        });
-
-        if (matchingMintedParcel && intersects) {
-            const intersection = turf.intersect(turf.featureCollection([turfCell, polygonGeoJson]));
-            if (intersection && intersection.geometry && intersection.geometry.type === 'Polygon') {
-                const intersectionCoords = intersection.geometry.coordinates[0];
-                if (intersectionCoords.length >= 4) {
-                    const mintedLayer = L.polygon(intersectionCoords.map(coord => [coord[1], coord[0]]), {
-                        color: 'red',
-                        weight: 1,
-                        fillOpacity: 0.5,
-                        fillColor: 'red'
-                    }).addTo(mapRef);
-
-                    // Attach the popup to the red minted parcel
-                    mintedLayer.on('click', () => {
-                        const popupContent = `
-                            <div style="text-align: left;">
-                                <strong>Parcel UUID:</strong> ${matchingMintedParcel.parcel_uuid}<br>
-                                <strong>Owner Wallet:</strong> ${matchingMintedParcel.parcel_owner_wallet}<br>
-                                <strong>Minted At:</strong> ${new Date(matchingMintedParcel.created_at).toLocaleString()}<br>
-                                <strong>Royalty:</strong> ${matchingMintedParcel.parcel_royalty}%<br>
-                                <a href="https://amoy.polygonscan.com/tx/${matchingMintedParcel.tx_hash}" target="_blank" rel="noopener noreferrer">
-                                    <button style="background-color: #800080; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
-                                        See Transaction
-                                    </button>
-                                </a>
-                            </div>
-                        `;
-                        const popup = L.popup()
-                            .setLatLng(mintedLayer.getBounds().getCenter())
-                            .setContent(popupContent)
-                            .openOn(mapRef);
-                    });
-
-                    return mintedLayer;
-                }
-            }
-        } else if (intersects) {
-            const cellLayer = L.polygon(cellCoords.map(coord => [coord[1], coord[0]]), {
-                color: 'green',
-                weight: 1,
-                fillOpacity: 0.2,
-                fillColor: 'green'
+      const cellCoords = closePolygon(cell.geometry.coordinates[0]);
+      const turfCell = turf.polygon([cellCoords]);
+      const intersects = turf.booleanIntersects(turfCell, polygonGeoJson);
+  
+      // Check if the parcel is minted using intersection instead of exact match
+      const matchingMintedParcel = mintedParcels.find((parcel) => {
+        const parcelTurf = turf.polygon([parcel.parcel_points]);
+        // Use intersection to match parcels, ensuring partial matches are also considered
+        const intersection = turf.intersect(turf.featureCollection([turfCell, parcelTurf]));
+        return intersection !== null && turf.booleanIntersects(turfCell, parcelTurf);
+      });
+  
+      if (matchingMintedParcel && intersects) {
+        // This cell is minted, color it red
+        const intersection = turf.intersect(turf.featureCollection([turfCell, polygonGeoJson]));
+        if (intersection && intersection.geometry && intersection.geometry.type === "Polygon") {
+          const intersectionCoords = intersection.geometry.coordinates[0];
+          if (intersectionCoords.length >= 4) {
+            const mintedLayer = L.polygon(intersectionCoords.map((coord) => [coord[1], coord[0]]), {
+              color: "red",
+              weight: 1,
+              fillOpacity: 0.5,
+              fillColor: "red",
             }).addTo(mapRef);
-
-            const attachPopup = (layer, coords) => {
-                if (layer) {
-                    layer.on('mouseover', (e) => {
-                        const popupContent = '<button id="nft-parcel-button" style="background-color: #ff7f00; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">NFT Parcel</button>';
-                        const popup = L.popup()
-                            .setLatLng(e.latlng)
-                            .setContent(popupContent)
-                            .openOn(mapRef);
-
-                        // Attach the event listener directly to the popup's button
-                        popup.getElement().querySelector("#nft-parcel-button").addEventListener("click", () => {
-                            handleNftParcelClick(coords);
-                            mapRef.closePopup();
-                        });
-                    });
-                }
-            };
-
-            attachPopup(cellLayer, cellCoords);
-
-            cellLayer.on('click', () => {
-                handleCellSelection(cellLayer, cellCoords, polygonGeoJson, attachPopup);
+  
+            // Attach the popup to the red minted parcel
+            mintedLayer.on("click", () => {
+              const popupContent = `
+                <div style="text-align: left;">
+                  <strong>Parcel UUID:</strong> ${matchingMintedParcel.parcel_uuid}<br>
+                  <strong>Owner Wallet:</strong> ${matchingMintedParcel.parcel_owner_wallet}<br>
+                  <strong>Minted At:</strong> ${new Date(matchingMintedParcel.created_at).toLocaleString()}<br>
+                  <strong>Royalty:</strong> ${matchingMintedParcel.parcel_royalty}%<br>
+                  <a href="https://amoy.polygonscan.com/tx/${matchingMintedParcel.tx_hash}" target="_blank" rel="noopener noreferrer">
+                    <button style="background-color: #800080; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
+                      See Transaction
+                    </button>
+                  </a>
+                </div>
+              `;
+              const popup = L.popup()
+                .setLatLng(mintedLayer.getBounds().getCenter())
+                .setContent(popupContent)
+                .openOn(mapRef);
             });
-
-            return cellLayer;
+  
+            return mintedLayer;
+          }
         }
-
-        // Return null for cells that don't intersect or are already minted
-        return null;
+      } else if (intersects) {
+        // Non-minted parcel, color it green
+        const cellLayer = L.polygon(cellCoords.map((coord) => [coord[1], coord[0]]), {
+          color: "green",
+          weight: 1,
+          fillOpacity: 0.2,
+          fillColor: "green",
+        }).addTo(mapRef);
+  
+        const attachPopup = (layer, coords) => {
+          if (layer) {
+            layer.on("mouseover", (e) => {
+              const popupContent =
+                '<button id="nft-parcel-button" style="background-color: #ff7f00; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">NFT Parcel</button>';
+              const popup = L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(mapRef);
+  
+              // Attach the event listener directly to the popup's button
+              popup.getElement().querySelector("#nft-parcel-button").addEventListener("click", () => {
+                handleNftParcelClick(coords);
+                mapRef.closePopup();
+              });
+            });
+          }
+        };
+  
+        attachPopup(cellLayer, cellCoords);
+  
+        cellLayer.on("click", () => {
+          handleCellSelection(cellLayer, cellCoords, polygonGeoJson, attachPopup);
+        });
+  
+        return cellLayer;
+      }
+  
+      // Return null for cells that don't intersect or are already minted
+      return null;
     });
-
+  
     // Filter out any null values before setting grid layers
-    setGridLayers(newGridLayers.filter(layer => layer !== null));
-};
-
-
+    setGridLayers(newGridLayers.filter((layer) => layer !== null));
+  };
+  
 
   const fetchMintedParcels = async (landId) => {
     try {
