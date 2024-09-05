@@ -9,6 +9,10 @@ import * as turf from '@turf/turf';
 import { v4 as uuidv4 } from 'uuid';
 import L from 'leaflet';
 import 'leaflet-draw/dist/leaflet.draw.css'; // Import leaflet draw styles
+import { ToastContainer, toast } from 'react-toastify';  // Import toast for notifications
+import 'react-toastify/dist/ReactToastify.css';  // Import toast styles
+
+
 
 const MyMap = dynamic(() => import('./components/MyMap'), { ssr: false });
 
@@ -40,7 +44,120 @@ export default function Home() {
   const [txHash, setTxHash] = useState(''); // Initialize txHash in state
   const [priceError, setPriceError] = useState('');
   const [royaltyError, setRoyaltyError] = useState('');
+  // Timer for fetching notifications
+  const [notifTimer, setNotifTimer] = useState(null);
 
+  const closeModal = () => {
+    setShowParcelModal(false); // Hide the modal
+    setMintSuccessMessage(''); // Reset success message
+    setMintedSuccessfully(false); // Reset minting state
+    resetParcelState(); // Reset input fields and parcel state
+  };
+
+
+  const showParcelOnMap = (parcelLatLngs) => {
+    if (!mapRef) return;
+  
+    // First, remove any existing markers or polygons (optional cleanup)
+    mapRef.eachLayer((layer) => {
+      if (layer instanceof L.Polygon) {
+        mapRef.removeLayer(layer);
+      }
+    });
+  
+    // Convert [lng, lat] to [lat, lng] if needed
+    const correctedLatLngs = parcelLatLngs.map((coord) => [coord[1], coord[0]]);
+  
+    // Add a marker or polygon for the parcel using the correct [lat, lng] format
+    const parcelLayer = L.polygon(correctedLatLngs, {
+      color: 'purple',
+      weight: 2,
+      fillOpacity: 0.5,
+    }).addTo(mapRef);
+  
+    // Fit the map bounds to the parcel
+    mapRef.fitBounds(parcelLayer.getBounds());
+  };
+  
+
+  // Set up polling every 5 seconds
+  useEffect(() => {
+    if (wallet) {
+      if (notifTimer) clearInterval(notifTimer);  // Clear any previous interval
+      const interval = setInterval(() => {
+        console.log("calling fetch notifs");
+        fetchNotifications(wallet)
+      }, 5000);
+      setNotifTimer(interval);
+    }
+    return () => clearInterval(notifTimer); // Clean up on unmount
+  }, [wallet, mapRef]);
+
+  // Fetch notifications and show them as toast messages
+  const fetchNotifications = async (wallet) => {
+    console.log("inside fetch notifs");
+    try {
+      console.log("try to fetch to notifs");
+      const response = await axios.get(`http://localhost:3001/notifs/${wallet}`);
+      const notifications = response.data;
+      console.log(notifications);
+  
+      notifications.forEach((notif) => {
+        const {
+          parcel_uuid,
+          parcel_price,
+          parcel_royalty,
+          parcel_land_name,
+          parcel_land_id,
+          parcel_owner_wallet,
+          parcel_points,
+          tx_hash,
+        } = notif.notif_data; // Extract data from notification object
+  
+        // Display toast notification with properly structured content
+        toast.info(
+          <>
+            <div><strong>Parcel UUID:</strong> {parcel_uuid}</div>
+            <div><strong>Price:</strong> {parcel_price} MATIC</div>
+            <div><strong>Royalty:</strong> {parcel_royalty / 100}%</div>
+            <div><strong>Land Name:</strong> {parcel_land_name}</div>
+            <div><strong>Land Id:</strong> {parcel_land_id}</div>
+            <div><strong>Owner Wallet:</strong> {parcel_owner_wallet}</div>
+            <a href={`https://amoy.polygonscan.com/tx/${tx_hash}`} target="_blank" rel="noopener noreferrer">
+              <button style={{ backgroundColor: '#800080', color: 'white', padding: '5px 10px', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+                See Transaction
+              </button>
+            </a>
+            <button
+              onClick={() => {
+                if (mapRef) {
+                  showParcelOnMap(parcel_points);  // Call showParcelOnMap when the map is ready
+                } else {
+                  console.error("Map is not initialized.");
+                }
+              }}
+              style={{ backgroundColor: '#28a745', color: 'white', padding: '5px 10px', marginLeft: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+            >
+              Show Parcel
+            </button>
+          </>,
+          { autoClose: false }  // Disable auto-close so the user can see the notification
+        );
+        markNotificationAsSeen(notif.id)
+      });
+    } catch (err) {
+      console.error('Error fetching notifications:', err);
+    }
+  };
+
+  const markNotificationAsSeen = async (notifId) => {
+    try {
+      await axios.post('http://localhost:3001/notifs/seen', { id: notifId }); // send id in the body
+    } catch (err) {
+      console.error('Error marking notification as seen:', err);
+    }
+  };
+  
 
   useEffect(() => {
     if (showPopup) {
@@ -166,13 +283,11 @@ export default function Home() {
       // Check if the parcel is minted using intersection instead of exact match
       const matchingMintedParcel = mintedParcels.find((parcel) => {
         const parcelTurf = turf.polygon([parcel.parcel_points]);
-        // Use intersection to match parcels, ensuring partial matches are also considered
         const intersection = turf.intersect(turf.featureCollection([turfCell, parcelTurf]));
         return intersection !== null && turf.booleanIntersects(turfCell, parcelTurf);
       });
   
       if (matchingMintedParcel && intersects) {
-        // This cell is minted, color it red
         const intersection = turf.intersect(turf.featureCollection([turfCell, polygonGeoJson]));
         if (intersection && intersection.geometry && intersection.geometry.type === "Polygon") {
           const intersectionCoords = intersection.geometry.coordinates[0];
@@ -184,7 +299,6 @@ export default function Home() {
               fillColor: "red",
             }).addTo(mapRef);
   
-            // Attach the popup to the red minted parcel
             mintedLayer.on("click", () => {
               const popupContent = `
                 <div style="text-align: left; word-wrap: break-word;">
@@ -199,11 +313,18 @@ export default function Home() {
                   <strong>Minted At:</strong> ${new Date(matchingMintedParcel.created_at).toLocaleString()}<br>
                   <strong>Minted Price:</strong> ${matchingMintedParcel.parcel_price} MATIC<br>
                   <strong>Royalty:</strong> ${matchingMintedParcel.parcel_royalty / 100}%<br>
-                  <a href="https://amoy.polygonscan.com/tx/${matchingMintedParcel.tx_hash}" target="_blank" rel="noopener noreferrer">
-                    <button style="background-color: #800080; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
-                      See Transaction
-                    </button>
-                  </a>
+                  <div style="display: flex; gap: 10px; margin-top: 10px;"> <!-- Added gap between buttons -->
+                    <a href="https://amoy.polygonscan.com/tx/${matchingMintedParcel.tx_hash}" target="_blank" rel="noopener noreferrer">
+                      <button style="background-color: #800080; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
+                        See Transaction
+                      </button>
+                    </a>
+                    <a href="https://turquoise-bizarre-reindeer-570.mypinata.cloud/ipfs/${matchingMintedParcel.ipfs_hash}" target="_blank" rel="noopener noreferrer">
+                      <button style="background-color: #28a745; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
+                        Parcel Data
+                      </button>
+                    </a>
+                  </div>
                 </div>
               `;
               const popup = L.popup()
@@ -216,7 +337,6 @@ export default function Home() {
           }
         }
       } else if (intersects) {
-        // Non-minted parcel, color it green
         const cellLayer = L.polygon(cellCoords.map((coord) => [coord[1], coord[0]]), {
           color: "green",
           weight: 1,
@@ -231,7 +351,6 @@ export default function Home() {
                 '<button id="nft-parcel-button" style="background-color: #ff7f00; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">NFT Parcel</button>';
               const popup = L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(mapRef);
   
-              // Attach the event listener directly to the popup's button
               popup.getElement().querySelector("#nft-parcel-button").addEventListener("click", () => {
                 handleNftParcelClick(coords);
                 mapRef.closePopup();
@@ -249,11 +368,9 @@ export default function Home() {
         return cellLayer;
       }
   
-      // Return null for cells that don't intersect or are already minted
       return null;
     });
   
-    // Filter out any null values before setting grid layers
     setGridLayers(newGridLayers.filter((layer) => layer !== null));
   };
   
@@ -299,7 +416,6 @@ export default function Home() {
   
           setGridLayers((prevLayers) => prevLayers.filter(layer => layer !== cellLayer).concat(intersectionLayer));
   
-          // Attach the popup again to the selected yellow cell
           if (intersectionLayer) {
             attachPopup(intersectionLayer, intersectionCoords);
           }
@@ -395,7 +511,6 @@ export default function Home() {
   
             setGridLayers((prevLayers) => prevLayers.concat(intersectionLayer));
   
-            // Attach the hover event to the yellow selected cells
             if (intersectionLayer) {
               intersectionLayer.on('mouseover', (e) => {
                 const popup = L.popup()
@@ -428,11 +543,9 @@ export default function Home() {
     if (mapRef) {
       const L = require("leaflet");
   
-      // Clear the existing grid layers from the map
       gridLayers.forEach((layer) => mapRef.removeLayer(layer));
       setGridLayers([]);
   
-      // Clear any existing polygons and popups from the map
       mapRef.eachLayer((layer) => {
         if (layer instanceof L.Polygon || layer instanceof L.Popup) {
           mapRef.removeLayer(layer);
@@ -444,23 +557,23 @@ export default function Home() {
         const bounds = polygon.getBounds();
         mapRef.fitBounds(bounds);
         mapRef.setView(bounds.getCenter(), 13);
-  
+        
         setLandName(land.name);
         setLandId(land.id);
         setSelectedLand(land);
         setSelectedPolygon({ coordinates: land.polygon_info, landId: land.id });
-  
+
         // Fetch minted parcels for the selected land
         const mintedParcels = await fetchMintedParcels(land.id);
-  
+
         // Draw the grid and highlight minted parcels
         drawGrid(land.polygon_info, mintedParcels);
-  
+
         // Calculate total parcels, minted parcels, and remaining parcels
         const totalParcels = gridLayers.length;
         const mintedParcelsCount = mintedParcels.length;
         const remainingParcels = totalParcels - mintedParcelsCount;
-  
+
         // Show popup with the summary information
         setShowPopup({
           polygon: land.polygon_info,
@@ -469,7 +582,7 @@ export default function Home() {
           mintedParcelsCount,
           remainingParcels,
         });
-  
+
         setIsButtonDisabled(false);
         resetParcelState();
         setShowSelectButton(true);
@@ -478,8 +591,6 @@ export default function Home() {
       }
     }
   };
-  
-  
 
   const resetParcelState = () => {
     setParcelPrice('');
@@ -490,39 +601,33 @@ export default function Home() {
     setShowParcelModal(false);
   };
 
-  
   const validateInputs = (price, royalty) => {
     let isValid = true;
 
-    // Validate price
     if (!price || isNaN(price) || Number(price) <= 0) {
       setPriceError("Please enter a valid positive price.");
       isValid = false;
     } else {
-      setPriceError(''); // Clear error if valid
+      setPriceError('');
     }
 
-    // Validate royalty
     if (!royalty || isNaN(royalty) || Number(royalty) < 0 || Number(royalty) > 100) {
       setRoyaltyError("Please enter a valid royalty percentage between 0 and 100.");
       isValid = false;
     } else {
-      setRoyaltyError(''); // Clear error if valid
+      setRoyaltyError('');
     }
 
     return isValid;
   };
 
   const handleSaveParcel = async () => {
-
     const royaltyBasisPoints = Math.floor(parcelRoyalty * 100); 
 
-    // Validate price and royalty
     if (!validateInputs(parcelPrice, parcelRoyalty)) {
-      return; // Stop the process if validation fails
+      return;
     }
 
-    // Create the new parcel info
     const newParcelInfo = {
       parcel_uuid: parcelUUID,
       parcel_price: parcelPrice,
@@ -533,38 +638,36 @@ export default function Home() {
       parcel_owner_wallet: wallet,
     };
   
-    // Update the state with the new parcel info
     setParcelInfo(newParcelInfo);
   
-    // Now send the newParcelInfo to the backend
     await sendParcelInfoToBackend(newParcelInfo);
   };
   
   const sendParcelInfoToBackend = async (parcelInfo) => {
-    setIsLoading(true); // Start loading
+    setIsLoading(true);
+
     try {
-        const response = await axios.post('http://localhost:3001/mintParcel', parcelInfo);
-        if (response.status === 200) {
-            const txHash = response.data.txHash;
-            console.log(response.data);
-            setMintSuccessMessage('Parcel was minted successfully!');
-            setTxHash(txHash); // Save txHash in state
-            setMintedSuccessfully(true); // Update state indicating mint was successful
-        } else {
-            console.error('Failed to mint parcel.');
-        }
+      const response = await axios.post('http://localhost:3001/mintParcel', parcelInfo);
+
+      if (response.status === 200) {
+        setMintSuccessMessage('Parcel is being minted, we will notify you once the process is complete.');
+        setMintedSuccessfully(true);
+        setTxHash(response.data.txHash);
+
+        // Disable buttons and show the minting message
+        setMintSuccessMessage('Parcel is being minted, we will notify you.');
+      } else {
+        console.error('Failed to mint parcel.');
+      }
     } catch (err) {
-      let msg = err + ', maybe is already minted!';
-        alert(msg);
-        console.error('Error minting parcel:', err);
+      let msg = err + ', maybe it is already minted!';
+      alert(msg);
+      console.error('Error minting parcel:', err);
     } finally {
-        setIsLoading(false); // Stop loading
+      setIsLoading(false);
     }
-};
+  };
 
-
-  
-  // Handle Delete Land
   const handleDeleteLand = async () => {
     const confirmation = window.confirm("Are you sure you want to delete this land?");
     if (confirmation) {
@@ -577,9 +680,8 @@ export default function Home() {
       }
     }
   };
-  
 
-  const filteredLands = lands.filter(land => 
+  const filteredLands = lands.filter(land =>
     land.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     land.id.toString().includes(searchQuery)
   );
@@ -594,9 +696,9 @@ export default function Home() {
 
       <main className="main-content">
         {!wallet ? (
-          <button 
-            className="connect-button" 
-            onClick={handleConnectWallet} 
+          <button
+            className="connect-button"
+            onClick={handleConnectWallet}
             style={{
               position: 'absolute',
               top: '10px',
@@ -618,8 +720,8 @@ export default function Home() {
               />
               {showSelectButton && (
                 <>
-                  <button 
-                    onClick={selectAllGridCells} 
+                  <button
+                    onClick={selectAllGridCells}
                     disabled={isButtonDisabled}
                     style={{
                       position: 'absolute',
@@ -637,8 +739,8 @@ export default function Home() {
                   >
                     {isButtonDisabled ? "NFT Land" : "NFT Land"}
                   </button>
-                  <button 
-                    onClick={resetMap} 
+                  <button
+                    onClick={resetMap}
                     style={{
                       position: 'absolute',
                       top: '100px',
@@ -655,8 +757,8 @@ export default function Home() {
                   >
                     Reload Land
                   </button>
-                  <button 
-                    onClick={handleDeleteLand} 
+                  <button
+                    onClick={handleDeleteLand}
                     style={{
                       position: 'absolute',
                       top: '180px',
@@ -678,44 +780,44 @@ export default function Home() {
             </div>
             <div className="land-list">
               <h2>Registered Lands:</h2>
-              <input 
-                type="text" 
-                placeholder="Search lands..." 
-                value={searchQuery} 
-                onChange={(e) => setSearchQuery(e.target.value)} 
-                style={{ 
-                  marginBottom: '10px', 
-                  padding: '5px', 
-                  width: 'calc(100% - 20px)', 
+              <input
+                type="text"
+                placeholder="Search lands..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  marginBottom: '10px',
+                  padding: '5px',
+                  width: 'calc(100% - 20px)',
                   marginLeft: '10px',
                   marginRight: '10px',
-                  boxSizing: 'border-box' 
+                  boxSizing: 'border-box'
                 }}
               />
               {filteredLands.length > 0 ? (
                 <ul>
                   {filteredLands.map((land) => (
                     <li key={land.id}>
-                    <button 
-                      onClick={() => loadLandOnMap(land)}  // Pass the full land object here
-                      style={{
-                        backgroundColor: landId === land.id ? '#28a745' : 'transparent',  // Green background for selected land
-                        color: landId === land.id ? 'white' : 'black',  // White text for selected land
-                        padding: '5px',
-                        marginBottom: '5px',
-                        borderRadius: '3px',
-                        textAlign: 'left',
-                        width: 'calc(100% - 20px)',
-                        marginLeft: '10px',
-                        marginRight: '10px',
-                        cursor: 'pointer',
-                        border: '1px solid',  // Add a border to emphasize selection
-                        borderColor: landId === land.id ? '#28a745' : 'transparent'  // Match the border color with the background when selected
-                      }}
-                    >
-                      {land.name}'s land with ID {land.id} - {new Date(land.created_at).toLocaleString()}
-                    </button>
-                  </li>
+                      <button
+                        onClick={() => loadLandOnMap(land)}
+                        style={{
+                          backgroundColor: landId === land.id ? '#28a745' : 'transparent',
+                          color: landId === land.id ? 'white' : 'black',
+                          padding: '5px',
+                          marginBottom: '5px',
+                          borderRadius: '3px',
+                          textAlign: 'left',
+                          width: 'calc(100% - 20px)',
+                          marginLeft: '10px',
+                          marginRight: '10px',
+                          cursor: 'pointer',
+                          border: '1px solid',
+                          borderColor: landId === land.id ? '#28a745' : 'transparent'
+                        }}
+                      >
+                        {land.name}'s land with ID {land.id} - {new Date(land.created_at).toLocaleString()}
+                      </button>
+                    </li>
                   ))}
                 </ul>
               ) : (
@@ -727,7 +829,7 @@ export default function Home() {
       </main>
 
       {showModal && (
-        <div 
+        <div
           style={{
             position: 'fixed',
             top: 0,
@@ -741,7 +843,7 @@ export default function Home() {
             zIndex: 2000
           }}
         >
-          <div 
+          <div
             style={{
               backgroundColor: 'white',
               padding: '20px',
@@ -751,10 +853,10 @@ export default function Home() {
             }}
           >
             <h3>Enter Land Name</h3>
-            <input 
-              type="text" 
-              value={landName} 
-              onChange={(e) => setLandName(e.target.value)} 
+            <input
+              type="text"
+              value={landName}
+              onChange={(e) => setLandName(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -762,8 +864,8 @@ export default function Home() {
                 boxSizing: 'border-box'
               }}
             />
-            <button 
-              onClick={handleSaveLand} 
+            <button
+              onClick={handleSaveLand}
               style={{
                 backgroundColor: '#28a745',
                 color: 'white',
@@ -776,8 +878,8 @@ export default function Home() {
             >
               Save
             </button>
-            <button 
-              onClick={() => setShowModal(false)} 
+            <button
+              onClick={() => setShowModal(false)}
               style={{
                 backgroundColor: '#dc3545',
                 color: 'white',
@@ -792,9 +894,8 @@ export default function Home() {
           </div>
         </div>
       )}
-
-      {showParcelModal && (
-          <div 
+        {showParcelModal && (
+          <div
             style={{
               position: 'fixed',
               top: 0,
@@ -806,10 +907,10 @@ export default function Home() {
               justifyContent: 'center',
               alignItems: 'center',
               zIndex: 2000,
-              padding: '10px'
+              padding: '10px',
             }}
           >
-            <div 
+            <div
               style={{
                 backgroundColor: 'white',
                 padding: '20px',
@@ -826,91 +927,37 @@ export default function Home() {
               <p>Land ID: {landId}</p>
               <p>Land Name: {landName}</p>
               <p>Owner Wallet: {wallet}</p>
-              <input 
-                type="text" 
-                placeholder="Enter price" 
-                value={parcelPrice} 
-                onChange={(e) => setParcelPrice(e.target.value)} 
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  marginBottom: '10px',
-                  boxSizing: 'border-box'
-                }}
-                disabled={mintedSuccessfully || isLoading}  // Disable input after minting or during loading
-              />
-              {priceError && <p style={{ color: 'red' }}>{priceError}</p>}
-              <input 
-                type="text" 
-                placeholder="Enter Parcel Royalty" 
-                value={parcelRoyalty} 
-                onChange={(e) => setParcelRoyalty(e.target.value)} 
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  marginBottom: '10px',
-                  boxSizing: 'border-box'
-                }}
-                disabled={mintedSuccessfully || isLoading}  // Disable input after minting or during loading
-              />
-              {royaltyError && <p style={{ color: 'red' }}>{royaltyError}</p>}
-              
-              {mintSuccessMessage && (
-                <p style={{ color: 'green', fontWeight: 'bold', marginTop: '10px' }}>
-                  {mintSuccessMessage}
-                </p>
-              )}
-
-              {/* Conditionally show transaction hash button */}
-              {mintedSuccessfully && txHash && (
-                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
-                  <a 
-                    href={`https://amoy.polygonscan.com/tx/${txHash}`} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    style={{ textDecoration: 'none' }}
-                  >
-                    <button 
-                      style={{
-                        backgroundColor: '#800080', // Purple color
-                        color: 'white',
-                        padding: '10px 15px',
-                        border: 'none',
-                        borderRadius: '5px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      See Transaction
-                    </button>
-                  </a>
-
-                  <button 
-                    onClick={async () => {
-                      setShowParcelModal(false);
-                      setMintSuccessMessage('');  // Reset success message
-                      setMintedSuccessfully(false);  // Reset state
-                      // Reload the land on the map after closing the modal
-                      await loadLandOnMap(selectedLand); // This will reload the land state when the modal is closed
-                    }} 
-                    style={{
-                      backgroundColor: '#28a745',
-                      color: 'white',
-                      padding: '10px 15px',
-                      border: 'none',
-                      borderRadius: '5px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Close
-                  </button>
-                </div>
-              )}
-
-              {/* Conditionally render buttons */}
-              {!mintedSuccessfully ? (
+              {!mintedSuccessfully && (
                 <>
-                  <button 
-                    onClick={handleSaveParcel} 
+                  <input
+                    type="text"
+                    placeholder="Enter price"
+                    value={parcelPrice}
+                    onChange={(e) => setParcelPrice(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      marginBottom: '10px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  {priceError && <p style={{ color: 'red' }}>{priceError}</p>}
+                  <input
+                    type="text"
+                    placeholder="Enter Parcel Royalty"
+                    value={parcelRoyalty}
+                    onChange={(e) => setParcelRoyalty(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      marginBottom: '10px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  {royaltyError && <p style={{ color: 'red' }}>{royaltyError}</p>}
+
+                  <button
+                    onClick={handleSaveParcel}
                     disabled={isLoading}  // Disable button during loading
                     style={{
                       backgroundColor: isLoading ? 'gray' : '#28a745',
@@ -925,32 +972,33 @@ export default function Home() {
                   >
                     {isLoading ? 'Minting...' : 'Mint'}
                   </button>
-                  <button 
-                    onClick={() => {
-                      if (!isLoading) {
-                        setShowParcelModal(false);
-                        setMintSuccessMessage(''); // Reset success message
-                        setMintedSuccessfully(false);  // Reset state
-                      }
-                    }} 
-                    disabled={isLoading}  // Disable Cancel button during loading
-                    style={{
-                      backgroundColor: isLoading ? 'gray' : '#dc3545',
-                      color: 'white',
-                      padding: '10px 15px',
-                      border: 'none',
-                      borderRadius: '5px',
-                      cursor: isLoading ? 'not-allowed' : 'pointer',
-                      width: '45%',
-                    }}
-                  >
-                    Cancel
-                  </button>
                 </>
-              ) : null}
+              )}
+              {mintedSuccessfully && (
+                  <>
+                    <p style={{ color: 'green', fontWeight: 'bold', marginTop: '10px' }}>
+                      Parcel is being minted. We will notify you.
+                    </p>
+                  </>
+                )}
+              <button
+                onClick={closeModal}
+                style={{
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  padding: '10px 15px',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  width: '45%',
+                }}
+              >
+                Close
+              </button>
             </div>
           </div>
-      )}
+        )}
+        <ToastContainer />
     </div>
   );
 }

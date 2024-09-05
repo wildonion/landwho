@@ -52,86 +52,106 @@ app.post('/mintParcel', async (req, res) => {
     );
 
     if (existingParcelQuery.rows.length > 0) {
-      // Parcel already minted
       return res.status(400).json({ error: 'Parcel has already been minted.' });
     }
 
-    // Proceed with pinning to IPFS and minting
-    let parcelInfo = `${parcel_uuid}-${parcel_land_name}-${parcel_land_id}`;
-    const options = {
-      pinataMetadata: {
-        name: parcelInfo,
-        keyvalues: {
-          parcelId: parcel_uuid,
-          ownerid: parcel_owner_wallet
-        }
-      },
-      pinataOptions: {
-        cidVersion: 0
-      }
-    };
+    // Immediately send a response to the client
+    res.status(200).json({
+      message: 'Minting process started. You will be notified upon completion.',
+      status: 'pending'
+    });
 
-    const result = await pinata.pinJSONToIPFS(req.body, options);
-    console.log('Pinata Result:', result);
-
-    try {
-      let ipfsHash = result.IpfsHash;
-      const ipfsResponse = await axios.get(`https://turquoise-bizarre-reindeer-570.mypinata.cloud/ipfs/${ipfsHash}`);
-      console.log('Data from IPFS:', ipfsResponse.data);
-
-      const tx = await contract.mintLand(
-        ipfsHash,
-        ethers.parseEther(parcel_price),
-        parcel_royalty
-      );
-
-      console.log('Minting transaction sent:', tx.hash);
-
-      // Wait for transaction to be mined
-      const receipt = await tx.wait();
-
-      // Insert into the database
+    // Continue minting in the background
+    (async () => {
       try {
-        const result = await pool.query(
+        // Pin the parcel info to IPFS
+        let parcelInfo = `${parcel_uuid}-${parcel_land_name}-${parcel_land_id}`;
+        const options = {
+          pinataMetadata: {
+            name: parcelInfo,
+            keyvalues: {
+              parcelId: parcel_uuid,
+              ownerid: parcel_owner_wallet
+            }
+          },
+          pinataOptions: {
+            cidVersion: 0
+          }
+        };
+
+        const result = await pinata.pinJSONToIPFS(req.body, options);
+        let ipfsHash = result.IpfsHash;
+
+        // Send the mint transaction to the blockchain
+        let parcelInfoIpfs = `https://turquoise-bizarre-reindeer-570.mypinata.cloud/ipfs/${ipfsHash}`
+        const tx = await contract.mintLand(parcelInfoIpfs, ethers.parseEther(parcel_price), parcel_royalty);
+        console.log('Minting transaction sent:', tx.hash);
+
+        // Wait for the transaction to be mined
+        const receipt = await tx.wait();
+
+        // Insert the minted parcel into the database
+        const parcelResult = await pool.query(
           `INSERT INTO minted_parcels (parcel_uuid, parcel_price, parcel_royalty, parcel_points, parcel_land_id, parcel_land_name, parcel_owner_wallet, ipfs_hash, tx_hash)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
           [
             parcel_uuid,
             parcel_price,
             parcel_royalty,
-            JSON.stringify(parcel_points), // Assuming parcel_points is an array of coordinates
+            JSON.stringify(parcel_points),
             parcel_land_id,
             parcel_land_name,
             parcel_owner_wallet,
-            ipfsHash,
+            parcelInfoIpfs,
             tx.hash
           ]
         );
 
-        console.log('Parcel saved to database with ID:', result.rows[0].id);
+        const mintedParcel = parcelResult.rows[0];
 
-        res.status(200).json({
-          message: 'Parcel info pinned to IPFS, minted, and stored in database successfully',
-          IpfsUrl: `https://turquoise-bizarre-reindeer-570.mypinata.cloud/ipfs/${ipfsHash}`,
-          MintedParcelData: ipfsResponse.data,
-          txHash: tx.hash
-        });
+        // Insert a notification record into the notifs table
+        await pool.query(
+          `INSERT INTO notifs (owner_wallet, notif_data) VALUES ($1, $2)`,
+          [parcel_owner_wallet, JSON.stringify(mintedParcel)]
+        );
 
-      } catch (dbErr) {
-        console.error('Error inserting into the database:', dbErr);
-        res.status(500).json({ error: 'Error inserting into the database' });
+        console.log('Minting completed and notification sent.');
+
+      } catch (err) {
+        console.error('Error during the minting process:', err);
+
+        // Optional: Insert an error notification
+        await pool.query(
+          `INSERT INTO notifs (owner_wallet, notif_data) VALUES ($1, $2)`,
+          [parcel_owner_wallet, JSON.stringify({ error: 'Minting failed', details: err.message })]
+        );
       }
-
-    } catch (err) {
-      console.error('Error minting land:', err);
-      res.status(500).json({ error: 'Error minting land' });
-    }
+    })();
 
   } catch (err) {
-    console.error('Error pinning to IPFS:', err);
-    res.status(500).json({ error: 'Failed to pin parcel info to IPFS' });
+    console.error('Error while starting the minting process:', err);
+    res.status(500).json({ error: 'Failed to start the minting process.' });
   }
 });
+
+
+// Fetch notifications for a specific user
+app.get('/notifs/:wallet', async (req, res) => {
+  const { wallet } = req.params;
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM notifs WHERE owner_wallet = $1 AND is_seen = false ORDER BY fired_at DESC',
+      [wallet]
+    );
+
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error('Error fetching notifications:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 
 
 // Get minted parcels by land ID
@@ -259,6 +279,19 @@ app.delete('/lands/:id', async (req, res) => {
     res.status(200).json({ message: 'Land deleted successfully' });
   } catch (err) {
     console.error('Error deleting land:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+ 
+
+app.post('/notifs/seen', async (req, res) => {
+  const { id } = req.body;
+
+  try {
+    await pool.query('UPDATE notifs SET is_seen = true WHERE id = $1', [id]);
+    res.status(200).json({ message: 'Notification marked as seen' });
+  } catch (err) {
+    console.error('Error marking notification as seen:', err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
