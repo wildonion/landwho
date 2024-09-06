@@ -12,6 +12,9 @@ const path = require('path');
 app.use(bodyParser.json());
 app.use(cors()); // Enable CORS for all routes
 
+
+const mintingParcels = new Set();
+
 // PostgreSQL setup
 const pool = new Pool({
   user: 'postgres',
@@ -45,6 +48,20 @@ app.post('/mintParcel', async (req, res) => {
   } = req.body;
 
   try {
+
+
+    const parcelKey = JSON.stringify(parcel_points);
+
+    // Check if the parcel is already in the minting process
+    if (mintingParcels.has(parcelKey)) {
+      console.log("parcel is inside the set");
+      return res.status(400).json({ error: 'Parcel is already being minted.' });
+    }
+
+    console.log("parcel is not inside the set, adding it");
+    // Add the parcel to the mintingParcels Set
+    mintingParcels.add(parcelKey);
+
     // Check if the parcel has already been minted
     const existingParcelQuery = await pool.query(
       'SELECT * FROM minted_parcels WHERE parcel_points = $1 AND parcel_land_id = $2',
@@ -52,6 +69,7 @@ app.post('/mintParcel', async (req, res) => {
     );
 
     if (existingParcelQuery.rows.length > 0) {
+      mintingParcels.delete(parcelKey);
       return res.status(400).json({ error: 'Parcel has already been minted.' });
     }
 
@@ -115,9 +133,16 @@ app.post('/mintParcel', async (req, res) => {
           [parcel_owner_wallet, JSON.stringify(mintedParcel)]
         );
 
+        // Remove the parcel from the mintingParcels Set once minting is complete
+        mintingParcels.delete(parcelKey);
+
+
         console.log('Minting completed and notification sent.');
 
       } catch (err) {
+
+        mintingParcels.delete(parcelKey);
+
         console.error('Error during the minting process:', err);
 
         // Optional: Insert an error notification

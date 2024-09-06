@@ -660,7 +660,7 @@ export default function Home() {
         console.error('Failed to mint parcel.');
       }
     } catch (err) {
-      let msg = err + ', maybe it is already minted!';
+      let msg = err + ', maybe it is already (being) minted by another one!';
       alert(msg);
       console.error('Error minting parcel:', err);
     } finally {

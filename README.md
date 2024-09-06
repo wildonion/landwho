@@ -26,6 +26,6 @@ npx hardhat run scripts/deploy.js --network amoy
 
 ## WIP
 - need business plan:
-    - marketplace, others can mint parcels
+    - marketplace
     - whole nft land logic
     - cover commission fee for minting to charge server wallet
