@@ -11,6 +11,8 @@ npm install & npm run dev
 
 ## Backend Run:
 
+create database `landwho` and import `landwho.sql` located in `landwho-backend` into the db.
+
 ```bash
 cd landwho-back
 node index.js
