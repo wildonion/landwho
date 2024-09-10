@@ -201,16 +201,29 @@ app.get('/mintedParcels/:landId', async (req, res) => {
 // Register a new landowner
 app.post('/registerOwner', async (req, res) => {
   const { wallet } = req.body;
+
   try {
-    const result = await pool.query(
-      'INSERT INTO landOwners (wallet) VALUES ($1) ON CONFLICT (wallet) DO NOTHING RETURNING id',
+    // Check if the wallet already exists
+    const existingOwnerQuery = await pool.query('SELECT id, wallet FROM landOwners WHERE wallet = $1', [wallet]);
+
+    if (existingOwnerQuery.rows.length > 0) {
+      // Wallet exists, return the existing owner
+      return res.status(200).json({ owner: existingOwnerQuery.rows[0], message: 'Owner already registered' });
+    }
+
+    // Wallet doesn't exist, so insert a new one
+    const insertOwnerQuery = await pool.query(
+      'INSERT INTO landOwners (wallet) VALUES ($1) RETURNING id',
       [wallet]
     );
-    res.status(201).json(result.rows[0] || { message: 'Owner already registered' });
+
+    res.status(201).json({ owner: insertOwnerQuery.rows[0], message: 'New owner registered' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error registering owner:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
 
 // Register new land
 app.post('/registerLand', async (req, res) => {
@@ -244,18 +257,10 @@ app.post('/registerLand', async (req, res) => {
   
 
 // Get lands by wallet address
-app.get('/lands/:wallet', async (req, res) => {
+app.get('/lands', async (req, res) => {
   const { wallet } = req.params;
   try {
-    const owner = await pool.query('SELECT id FROM landOwners WHERE wallet = $1', [wallet]);
-    if (owner.rows.length === 0) {
-      return res.status(404).json({ error: 'Owner not found' });
-    }
-    const ownerId = owner.rows[0].id;
-    
-    // Fetch lands in descending order by `created_at`
-    const lands = await pool.query('SELECT * FROM landInfo WHERE owner_id = $1 ORDER BY created_at DESC', [ownerId]);
-    
+    const lands = await pool.query('SELECT * FROM landInfo ORDER BY created_at DESC');
     res.status(200).json(lands.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -19,6 +19,7 @@ const MyMap = dynamic(() => import('./components/MyMap'), { ssr: false });
 export default function Home() {
   const [wallet, setWallet] = useState(null);
   const [lands, setLands] = useState([]);
+  const [ownerInfo, setOwnerInfo] = useState([]);
   const [mapRef, setMapRef] = useState(null);
   const [showPopup, setShowPopup] = useState(null);
   const [gridLayers, setGridLayers] = useState([]);
@@ -29,6 +30,7 @@ export default function Home() {
   const [showParcelModal, setShowParcelModal] = useState(false);
   const [landName, setLandName] = useState('');
   const [landId, setLandId] = useState(0);
+  const [landOwnerId, setLandOwnerId] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [landGridSelected, setLandGridSelected] = useState({});
   const [selectedGrids, setSelectedGrids] = useState([]);
@@ -199,7 +201,7 @@ export default function Home() {
 
   const fetchLands = async (wallet) => {
     try {
-      const response = await axios.get(`http://localhost:3001/lands/${wallet}`);
+      const response = await axios.get(`http://localhost:3001/lands`);
       setLands(response.data || []);
     } catch (err) {
       console.error('Error fetching lands:', err);
@@ -234,7 +236,8 @@ export default function Home() {
     if (userWallet) {
       setWallet(userWallet);
       try {
-        await axios.post('http://localhost:3001/registerOwner', { wallet: userWallet });
+        const response = await axios.post('http://localhost:3001/registerOwner', { wallet: userWallet });
+        setOwnerInfo(response.data.owner)
         fetchLands(userWallet);
       } catch (err) {
         console.error('Error registering owner:', err);
@@ -560,6 +563,7 @@ export default function Home() {
         
         setLandName(land.name);
         setLandId(land.id);
+        setLandOwnerId(land.owner_id);
         setSelectedLand(land);
         setSelectedPolygon({ coordinates: land.polygon_info, landId: land.id });
 
@@ -720,6 +724,7 @@ export default function Home() {
               />
               {showSelectButton && (
                 <>
+                  {landOwnerId === ownerInfo.id && (
                   <button
                     onClick={selectAllGridCells}
                     disabled={isButtonDisabled}
@@ -737,8 +742,9 @@ export default function Home() {
                       fontSize: '12px'
                     }}
                   >
-                    {isButtonDisabled ? "NFT Land" : "NFT Land"}
+                    {isButtonDisabled ? "NFT Land: Off" : "NFT Land"}
                   </button>
+                  )}
                   <button
                     onClick={resetMap}
                     style={{
@@ -757,24 +763,26 @@ export default function Home() {
                   >
                     Reload Land
                   </button>
-                  <button
-                    onClick={handleDeleteLand}
-                    style={{
-                      position: 'absolute',
-                      top: '180px',
-                      left: '10px',
-                      zIndex: 1000,
-                      backgroundColor: '#dc3545',
-                      color: 'white',
-                      padding: '5px 10px',
-                      border: 'none',
-                      borderRadius: '5px',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
-                  >
-                    Delete Land
-                  </button>
+                  {landOwnerId === ownerInfo.id && (
+                    <button
+                      onClick={handleDeleteLand}
+                      style={{
+                        position: 'absolute',
+                        top: '180px',
+                        left: '10px',
+                        zIndex: 1000,
+                        backgroundColor: '#dc3545',
+                        color: 'white',
+                        padding: '5px 10px',
+                        border: 'none',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                      }}
+                    >
+                      Delete Land
+                    </button>
+                  )}
                 </>
               )}
             </div>
