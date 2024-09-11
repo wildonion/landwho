@@ -46,8 +46,36 @@ export default function Home() {
   const [txHash, setTxHash] = useState(''); // Initialize txHash in state
   const [priceError, setPriceError] = useState('');
   const [royaltyError, setRoyaltyError] = useState('');
-  // Timer for fetching notifications
   const [notifTimer, setNotifTimer] = useState(null);
+  const [showMintedParcelsModal, setShowMintedParcelsModal] = useState(false); // State to control modal visibility
+  const [mintedParcels, setMintedParcels] = useState([]); // State to store the minted parcels
+  const [searchMintedQuery, setSearchMintedQuery] = useState('');
+
+
+  const filteredMintedParcels = mintedParcels.filter((parcel) => {
+    return (
+      parcel.parcel_uuid.toLowerCase().includes(searchMintedQuery.toLowerCase()) ||
+      parcel.parcel_land_name.toLowerCase().includes(searchMintedQuery.toLowerCase())
+    );
+  });
+
+  // Function to open the modal and fetch the parcels by wallet owner
+  const handleShowMintedParcels = async () => {
+    try {
+      const response = await axios.get(`http://localhost:3001/mintedParcelsByOwner/${wallet}`);
+      setMintedParcels(response.data);
+      setShowMintedParcelsModal(true);
+    } catch (err) {
+      console.error('Error fetching minted parcels:', err);
+    }
+  };
+
+
+  // Close the modal
+  const handleCloseMintedParcels = () => {
+    setShowMintedParcelsModal(false);
+  };
+
 
   const closeModal = () => {
     setShowParcelModal(false); // Hide the modal
@@ -275,7 +303,7 @@ export default function Home() {
       bbox[3] + expandBy,
     ];
   
-    const cellSide = 10; // 100 meters each parcel
+    const cellSide = 10; // 10 meters each parcel
     const grid = turf.squareGrid(bbox, cellSide, { units: 'meters' });
   
     const newGridLayers = grid.features.map((cell) => {
@@ -322,7 +350,7 @@ export default function Home() {
                         See Transaction
                       </button>
                     </a>
-                    <a href="https://turquoise-bizarre-reindeer-570.mypinata.cloud/ipfs/${matchingMintedParcel.ipfs_hash}" target="_blank" rel="noopener noreferrer">
+                    <a href="${matchingMintedParcel.ipfs_hash}" target="_blank" rel="noopener noreferrer">
                       <button style="background-color: #28a745; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer;">
                         Parcel Data
                       </button>
@@ -783,6 +811,26 @@ export default function Home() {
                       Delete Land
                     </button>
                   )}
+
+                    <button
+                      onClick={handleShowMintedParcels}
+                      style={{
+                        position: 'absolute',
+                        top: '220px',
+                        left: '10px',
+                        zIndex: 1000,
+                        backgroundColor: '#007bff',
+                        color: 'white',
+                        padding: '5px 10px',
+                        border: 'none',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                      }}
+                    >
+                      Show Minted Parcels
+                    </button>
+
                 </>
               )}
             </div>
@@ -999,6 +1047,107 @@ export default function Home() {
                   borderRadius: '5px',
                   cursor: 'pointer',
                   width: '45%',
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+        {showMintedParcelsModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 2000,
+              padding: '10px',
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: 'white',
+                padding: '20px',
+                borderRadius: '10px',
+                width: '90%',
+                maxWidth: '700px',
+                textAlign: 'center',
+                boxSizing: 'border-box',
+              }}
+            >
+              <h3>Minted Parcels</h3>
+
+              {/* Search Box */}
+              <input
+                type="text"
+                placeholder="Search parcels..."
+                value={searchMintedQuery}
+                onChange={(e) => setSearchMintedQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  marginBottom: '20px',
+                  boxSizing: 'border-box',
+                }}
+              />
+
+              {/* Display Filtered Parcels */}
+              <div style={{ maxHeight: '400px', overflowY: 'scroll' }}>
+                {filteredMintedParcels.length > 0 ? (
+                  filteredMintedParcels.map((parcel) => (
+                    <div
+                      key={parcel.parcel_uuid}
+                      style={{
+                        border: '1px solid #ccc',
+                        borderRadius: '10px',
+                        marginBottom: '10px',
+                        padding: '10px',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <p><strong>Parcel UUID:</strong> {parcel.parcel_uuid}</p>
+                      <p><strong>Land Name:</strong> {parcel.parcel_land_name}</p>
+                      <p><strong>Price:</strong> {parcel.parcel_price} MATIC</p>
+                      <p><strong>Royalty:</strong> {parcel.parcel_royalty / 100}%</p>
+
+                      {/* Buttons */}
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <a href={`https://amoy.polygonscan.com/tx/${parcel.tx_hash}`} target="_blank" rel="noopener noreferrer">
+                          <button style={{ backgroundColor: '#800080', color: 'white', padding: '5px 10px', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+                            See Transaction
+                          </button>
+                        </a>
+                        <button
+                          onClick={() => showParcelOnMap(parcel.parcel_points)}
+                          style={{ backgroundColor: '#28a745', color: 'white', padding: '5px 10px', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+                        >
+                          Show Parcel
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p>No minted parcels found.</p>
+                )}
+              </div>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setShowMintedParcelsModal(false)}
+                style={{
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  padding: '10px 15px',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  marginTop: '20px',
                 }}
               >
                 Close

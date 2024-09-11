@@ -197,6 +197,29 @@ app.get('/mintedParcels/:landId', async (req, res) => {
   }
 });
 
+// Fetch minted parcels for a specific wallet owner
+app.get('/mintedParcelsByOwner/:wallet', async (req, res) => {
+  const { wallet } = req.params;
+
+  try {
+    // Query the minted_parcels table to get parcels where the owner_wallet matches the provided wallet
+    const result = await pool.query(
+      'SELECT * FROM minted_parcels WHERE parcel_owner_wallet = $1 ORDER BY created_at DESC',
+      [wallet]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No minted parcels found for this wallet owner' });
+    }
+
+    // Return the minted parcels data
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error('Error fetching minted parcels for wallet owner:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 
 // Register a new landowner
 app.post('/registerOwner', async (req, res) => {
