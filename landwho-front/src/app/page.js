@@ -62,7 +62,7 @@ export default function Home() {
   // Function to open the modal and fetch the parcels by wallet owner
   const handleShowMintedParcels = async () => {
     try {
-      const response = await axios.get(`http://localhost:3001/mintedParcelsByOwner/${wallet}`);
+      const response = await axios.get(`http://localhost:3003/mintedParcelsByOwner/${wallet}`);
       setMintedParcels(response.data);
       setShowMintedParcelsModal(true);
     } catch (err) {
@@ -128,7 +128,7 @@ export default function Home() {
     console.log("inside fetch notifs");
     try {
       console.log("try to fetch to notifs");
-      const response = await axios.get(`http://localhost:3001/notifs/${wallet}`);
+      const response = await axios.get(`http://localhost:3003/notifs/${wallet}`);
       const notifications = response.data;
       console.log(notifications);
   
@@ -182,7 +182,7 @@ export default function Home() {
 
   const markNotificationAsSeen = async (notifId) => {
     try {
-      await axios.post('http://localhost:3001/notifs/seen', { id: notifId }); // send id in the body
+      await axios.post('http://localhost:3003/notifs/seen', { id: notifId }); // send id in the body
     } catch (err) {
       console.error('Error marking notification as seen:', err);
     }
@@ -229,7 +229,7 @@ export default function Home() {
 
   const fetchLands = async (wallet) => {
     try {
-      const response = await axios.get(`http://localhost:3001/lands`);
+      const response = await axios.get(`http://localhost:3003/lands`);
       setLands(response.data || []);
     } catch (err) {
       console.error('Error fetching lands:', err);
@@ -246,7 +246,7 @@ export default function Home() {
     if (!landName || !selectedPolygon) return;
 
     try {
-      await axios.post('http://localhost:3001/registerLand', {
+      await axios.post('http://localhost:3003/registerLand', {
         wallet,
         polygonInfo: selectedPolygon,
         name: landName,
@@ -264,7 +264,7 @@ export default function Home() {
     if (userWallet) {
       setWallet(userWallet);
       try {
-        const response = await axios.post('http://localhost:3001/registerOwner', { wallet: userWallet });
+        const response = await axios.post('http://localhost:3003/registerOwner', { wallet: userWallet });
         setOwnerInfo(response.data.owner)
         fetchLands(userWallet);
       } catch (err) {
@@ -408,7 +408,7 @@ export default function Home() {
 
   const fetchMintedParcels = async (landId) => {
     try {
-      const response = await axios.get(`http://localhost:3001/mintedParcels/${landId}`);
+      const response = await axios.get(`http://localhost:3003/mintedParcels/${landId}`);
       console.log(response.data)
       return response.data;
     } catch (err) {
@@ -679,7 +679,7 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:3001/mintParcel', parcelInfo);
+      const response = await axios.post('http://localhost:3003/mintParcel', parcelInfo);
 
       if (response.status === 200) {
         setMintSuccessMessage('Parcel is being minted, we will notify you once the process is complete.');
@@ -704,7 +704,7 @@ export default function Home() {
     const confirmation = window.confirm("Are you sure you want to delete this land?");
     if (confirmation) {
       try {
-        await axios.delete(`http://localhost:3001/lands/${landId}`);
+        await axios.delete(`http://localhost:3003/lands/${landId}`);
         fetchLands(wallet);
         resetMap();
       } catch (err) {

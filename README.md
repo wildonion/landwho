@@ -27,10 +27,12 @@ npx hardhat run scripts/deploy.js --network amoy
 ```
 
 ## WIP
-- need business plan:
-    - marketplace
-    - refresh page when user change wallet
-    - size of parcels (default: 10 meters)
-    - nft land 
-    - bug of showing minted parcels
-    - cover commission fee for minting to charge server wallet
+
+- marketplace
+- social media
+- shop 
+- refresh page when user change wallet
+- size of parcels (default: 10 meters)
+- nft land 
+- bug of showing minted parcels
+- cover commission fee for minting to charge server wallet
